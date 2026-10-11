@@ -540,3 +540,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 
 ## 2026-10-10 20:50 · No gaze = not looking at anything
 - When the gaze is missing (glasses off, tracking lost, NaN), every path now treats it as "not looking at anything": gaze cache gets gaze (-1,-1) (unseen triggers fire after the 0.3 s grace, looking_at never), the decision-time gaze check sees no gaze if the newest sample is >0.3 s older than the newest frame, and Haiku's seen_by_user is forced false for frames without a red dot. Notice memory still covers a brief dropout right after looking (3 s). Tests: tests/test_no_gaze.py.
+
+## 2026-10-10 20:52 · Live punch test PASSED
+- Glasses worn, hotspot 5 GHz, Haiku on, trigger "Someone about to attack". Fired urgent on a slow fist toward the camera: frame→buzz ~0.96 s (early streamed field), full Haiku result 1.6 s. Felt on the Dot and seen in the app (user confirmed).
