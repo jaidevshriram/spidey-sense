@@ -537,3 +537,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 ## 2026-10-10 20:40 · Hotspot on 5 GHz
 - Companion phone hotspot switched 2.4 → 5 GHz. Neon capture→Mac age: median ~90 ms, p90 ~120 ms (was median 0.5–1.8 s, p90 up to 3 s). Live view: 0 gaps in 60 s, max 0.17 s stale. Holds with Haiku on (median call 1.1 s, frame→decision 1.2 s). Engine reconnected to the Companion on its own after the network change.
 - **Demo checklist: hotspot band = 5 GHz.**
+
+## 2026-10-10 20:50 · No gaze = not looking at anything
+- When the gaze is missing (glasses off, tracking lost, NaN), every path now treats it as "not looking at anything": gaze cache gets gaze (-1,-1) (unseen triggers fire after the 0.3 s grace, looking_at never), the decision-time gaze check sees no gaze if the newest sample is >0.3 s older than the newest frame, and Haiku's seen_by_user is forced false for frames without a red dot. Notice memory still covers a brief dropout right after looking (3 s). Tests: tests/test_no_gaze.py.

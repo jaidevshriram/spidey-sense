@@ -663,10 +663,11 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
     def gaze_cache_step(frame):
         """Per frame: gaze vs Haiku's cached boxes -> fire gaze triggers without waiting for the next call."""
         g = frame.gaze_xy
-        if gcache is None or g is None:
+        if gcache is None:
             return
         h, w = frame.image.shape[:2]
-        gx, gy = (g if frame.gaze_norm else (g[0] / w, g[1] / h))
+        # no gaze (glasses off / tracking lost) = looking at nothing: outside every box
+        gx, gy = (-1.0, -1.0) if g is None else (g if frame.gaze_norm else (g[0] / w, g[1] / h))
         small = cv2.resize(cv2.cvtColor(frame.image, cv2.COLOR_BGR2GRAY), (32, 24), interpolation=cv2.INTER_AREA)
         gcache.motion(small, frame.ts)
         rules = {r.id: r for r in gaze_rules()}
@@ -737,6 +738,12 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                     det.frame = frame
                 # Async detectors report which frame they actually looked at.
                 frame_ts = det.raw.setdefault("frame_ts", frame.ts)
+                if det.raw.get("gaze", frame.gaze_xy) is None:
+                    # no red dot in that frame: never trust a "seen" guess, the user wasn't looking at anything
+                    det.seen_by_user = False
+                    for t in (det.triggers or {}).values():
+                        if isinstance(t, dict):
+                            t["seen_by_user"] = False
 
                 rules = ctl.active_rules()
                 full = not det.raw.get("early")

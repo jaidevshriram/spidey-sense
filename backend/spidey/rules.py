@@ -349,6 +349,7 @@ def apply_heart(rules: list[Rule], sample: dict, now: float) -> list[HapticEvent
 # (0..1 of the frame it saw), the subject->target gap in subject body-heights, the subject's box area ratio
 # ("loom") and Haiku's ordinal closer/same/farther. No metric distances from the camera.
 
+NO_GAZE_AFTER_S = 0.3   # newest gaze sample older than this (vs the newest frame) = no gaze now
 GAZE_HISTORY_S = 5.0
 BOX_MARGIN = 0.04            # gaze within 4% of the frame around a box counts as "on it"
 MATCH_GAP_S = 2.0            # a trigger unmatched this long = the thing is gone; its memory resets
@@ -421,6 +422,7 @@ class TriggerMemory:
         self.states: dict[str, TriggerState] = {}
 
     def add_frame(self, frame: Frame) -> None:
+        self.last_frame_ts = frame.ts
         g = frame.gaze_px()
         if g is not None:
             h, w = frame.image.shape[:2]
@@ -430,7 +432,11 @@ class TriggerMemory:
 
     def newest_gaze(self) -> tuple[float, float, float] | None:
         """(ts, x, y) of the newest gaze sample (0..1), for the decision-time "gaze left the box" check."""
-        return self.gaze[-1] if self.gaze else None
+        if not self.gaze:
+            return None
+        if self.gaze[-1][0] < getattr(self, "last_frame_ts", 0.0) - NO_GAZE_AFTER_S:
+            return None                     # gaze lost (glasses off, tracking dropped): not looking at anything
+        return self.gaze[-1]
 
     def fired(self, rule_id: str) -> None:
         """A temporal trigger actually fired: disarm it until the trend reverses (hysteresis)."""
