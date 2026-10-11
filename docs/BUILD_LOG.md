@@ -266,3 +266,9 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 ### 17:50 Demo engine restarted with current code; Haptics tab checked in Jaidev's simulator
 - Relaunched the app on the iPhone 16 Pro simulator with `-tab haptics`: Link check all green (Phone→Mac RTT 1.1 ms,
   mock El Jefe, Dot 3 answering) via the automatic URL, with no settings.
+
+### 17:48 App driving the real Dot over Bluetooth
+- `scripts/engine_ble.sh` (engine + `--sink datafeel-ble`, Terminal) and `backend/configs/config.manual.yaml`
+  (the fake detector never fires, so only the app triggers the Dot). The default config buzzed the real Dot once at 3 s; that's why manual mode exists.
+- App Haptics tab, Link check (simulator → Mac → BLE → Dot): Phone→Mac 3.6 ms; Mac→El Jefe BLE · DataFeelCE ·
+  RSSI −40 dBm · register read 143 ms; El Jefe→Dot 1/1 answering (address 3). Ping all flashed the Dot.

@@ -1,0 +1,44 @@
+# Manual mode: nothing fires by itself; drive the Dot from the app (Haptics tab, Settings test buttons).
+#   ./scripts/engine_ble.sh --config backend/configs/config.manual.yaml
+# Swap any stage by changing its `type`. Everything else stays the same.
+
+source:
+  type: fake            # fake | neon
+  # path: clip.mp4      # optional still image or video to loop; default = synthetic moving circle
+  fps: 15
+  gaze: fixed           # fixed | sweep | follow
+  gaze_point: [0.5, 0.5]
+  # --- real hardware (when the Neon is here) ---
+  # type: neon
+  # mode: realtime      # realtime = Companion phone over Wi-Fi (default) | capture = USB via Pupil Capture
+  # host: 192.168.1.23  # phone IP if auto-discovery is blocked on the venue Wi-Fi
+
+detector:
+  type: fake            # manual mode: the scripted hazard never appears, so only the app triggers the Dot
+  appear: 999
+  seen: 999
+  gone: 999
+  period: 1000
+
+detect_every_s: 0       # e.g. 0.5 for a VLM so it isn't called every frame
+
+rules:
+  - name: blindspot     # dangerous and you haven't looked at it -> urgent
+    feel: urgent
+    if: {unseen: true, min_urgency: 0.6}
+    cooldown_s: 3
+  # - name: heads_up    # mild and unseen -> ambient hum
+  #   feel: ambient
+  #   if: {unseen: true, max_urgency: 0.6}
+  #   cooldown_s: 6
+
+sink:
+  type: console         # console | datafeel (USB) | datafeel-ble (Bluetooth) | phone
+  # cooldown_s: 2       # datafeel only
+  ble_name: DataFeelCE  # OUR El Jefe. Others at the venue: DataFeel1E/7E/36/32. Never connect to those.
+
+log: logs/events.jsonl
+
+server:                 # WebSocket feed for the phone app (ws://<mac-ip>:8765)
+  enabled: true
+  port: 8765

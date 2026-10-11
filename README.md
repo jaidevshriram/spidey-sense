@@ -58,6 +58,7 @@ started from inside other tools gets killed (exit 134). From Terminal:
 ./scripts/ble_test.sh                              # finds DataFeelCE, flashes the Dot green
 ./scripts/playground.sh                            # Haptic Playground → open the printed URL on your phone
 python3 backend/run.py --sink datafeel-ble         # full pipeline buzzing the Dot
+./scripts/engine_ble.sh --config backend/configs/config.manual.yaml   # real Dot, nothing auto-fires: drive it from the app
 ```
 
 Only one program can hold the El Jefe Bluetooth link at a time. Our El Jefe is **DataFeelCE**; other kits at the
