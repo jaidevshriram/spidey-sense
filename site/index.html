@@ -4,215 +4,194 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spidey Sense</title>
-<meta name="description" content="Eye-tracking glasses and Claude that tap your wrist about what you haven't looked at.">
+<meta name="description" content="Eye-tracking glasses + Claude + a haptic Dot: it taps your wrist about what you haven't looked at.">
 <link rel="icon" href="assets/app-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap">
 <style>
-/* Layout: an editorial page. Serif headlines, hairlines instead of boxes, one quiet coral accent. */
+/* Layout: say what it is and show it in one screen; everything else is a short scroll of picture-first cards. */
 :root {
-  --paper: #fbfbfa; --ink: #161616; --muted: #626266; --hair: #e3e2de; --accent: #cf3f3c; --amber: #b8780a;
-  --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
-  --sans: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --bg: #f9f8f7; --card: #ffffff; --ink: #1b1b1d; --muted: #6b6b70; --line: #ebe9e6;
+  --coral: #ff4f5e; --coral-ink: #e23a4a; --amber: #ffb020; --heart: #e54b8a;
+  --font: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --paper: #121212; --ink: #ecebe8; --muted: #9c9ba0; --hair: #2a2a2a; --accent: #ff6b64; --amber: #e8a43a; color-scheme: dark } }
-:root[data-theme="dark"] { --paper: #121212; --ink: #ecebe8; --muted: #9c9ba0; --hair: #2a2a2a; --accent: #ff6b64; --amber: #e8a43a; color-scheme: dark }
+  --bg: #141316; --card: #1e1c20; --ink: #f2f0f3; --muted: #a29ea7; --line: #2e2b31; --coral-ink: #ff6b78; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #141316; --card: #1e1c20; --ink: #f2f0f3; --muted: #a29ea7; --line: #2e2b31; --coral-ink: #ff6b78; color-scheme: dark }
 
 * { box-sizing: border-box }
-body { margin: 0; background: var(--paper); color: var(--ink); font: 400 17px/1.6 var(--sans) }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 var(--font) }
 img, video { display: block; max-width: 100% }
-a { color: inherit; text-decoration-color: var(--hair); text-underline-offset: 4px }
-a:hover { text-decoration-color: var(--accent) }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
-.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 24px }
-h1, h2, h3 { font-family: var(--serif); font-weight: 400; margin: 0; text-wrap: balance; letter-spacing: -0.01em }
+a { color: var(--coral-ink) }
+a:focus-visible { outline: 3px solid var(--coral); outline-offset: 3px; border-radius: 8px }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 20px }
+h1, h2, h3 { margin: 0; letter-spacing: -0.02em; text-wrap: balance }
 p { margin: 0 }
-.meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.02em }
+section { padding-block: 56px }
+.label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--coral-ink) }
+h2 { font-size: clamp(26px, 3.6vw, 34px); font-weight: 800; margin-top: 6px }
 
-/* masthead */
-.mast { display: flex; align-items: center; justify-content: space-between; padding-block: 22px; border-bottom: 1px solid var(--hair) }
-.mast .name { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; text-decoration: none }
-.mast .name img { width: 22px; height: 22px; border-radius: 5px }
-.mast nav { display: flex; gap: 22px; font-size: 14.5px; color: var(--muted) }
-.mast nav a { text-decoration: none }
+/* hero: name, one line, buttons, video */
+.hero { padding-block: 28px 8px; display: grid; gap: 22px }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 36px; align-items: center }
+.hero-grid .txt { display: grid; gap: 18px; min-width: 0 }
+@media (max-width: 820px) { .hero-grid { grid-template-columns: 1fr; gap: 22px } }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800 }
+.brand img { width: 32px; height: 32px; border-radius: 8px }
+.hero h1 { font-size: clamp(32px, 4.4vw, 48px); font-weight: 800; line-height: 1.05; max-width: 820px }
+.hero h1 span { color: var(--coral-ink) }
+.hero .one { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 640px }
+.wwh { margin: 0; display: grid; gap: 12px; max-width: 560px }
+.wwh div { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: baseline }
+.wwh dt { font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--coral-ink) }
+.wwh dd { margin: 0; color: var(--muted); font-size: 16.5px; line-height: 1.5 }
+.wwh dd b { color: var(--ink) }
+.btns { display: flex; flex-wrap: wrap; gap: 10px }
+.btn { display: inline-block; background: var(--coral); color: #fff; text-decoration: none; font-weight: 700; padding: 11px 20px; border-radius: 999px }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line) }
+.video { border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 12px 40px rgba(255, 79, 94, .16) }
+.video video { width: 100%; aspect-ratio: 16/9 }
 
-/* hero */
-.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 56px; align-items: center; padding-block: 64px 72px }
-.hero h1 { font-size: clamp(40px, 5.4vw, 66px); line-height: 1.02 }
-.hero h1 em { color: var(--accent) }
-.wwh { margin: 34px 0 0; border-top: 1px solid var(--hair) }
-.wwh div { display: grid; grid-template-columns: 64px 1fr; gap: 16px; padding-block: 14px; border-bottom: 1px solid var(--hair) }
-.wwh dt { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); padding-top: 3px }
-.wwh dd { margin: 0; font-size: 16.5px }
-.links { display: flex; flex-wrap: wrap; gap: 26px; margin-top: 28px; font-weight: 500 }
-.links a { text-decoration-color: var(--accent) }
-.film { background: #000; border-radius: 4px; overflow: hidden }
-.film video { width: 100%; aspect-ratio: 16/9 }
-.film + .meta { margin-top: 10px }
-
-/* sections */
-section { padding-block: 72px; border-top: 1px solid var(--hair) }
-.head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 56px; margin-bottom: 40px }
-.head h2 { font-size: clamp(30px, 3.6vw, 42px); line-height: 1.1 }
-.head p { color: var(--muted); max-width: 520px; align-self: end }
+/* three steps */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 22px }
+.step { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 6px }
+.step b { font-size: 19px }
+.step p { color: var(--muted); font-size: 15px }
+.step i { font-style: normal; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; color: #fff; background: var(--coral) }
 
 /* scenarios */
-.plates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 32px }
-.plate { margin: 0; display: grid; gap: 14px; align-content: start; min-width: 0 }
-.plate.lead { grid-column: 1 / -1; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 32px; align-items: end }
-.plate img { width: 100%; border-radius: 3px }
-.plate figcaption { display: grid; gap: 6px }
-.plate h3 { font-size: 23px; line-height: 1.2 }
-.plate p { color: var(--muted); font-size: 15.5px }
-.amber { color: var(--amber) } .red { color: var(--accent) }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
-.pair img { height: 230px; object-fit: cover; object-position: top; border-radius: 12px; border: 1px solid var(--hair) }
+.scenes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 22px; align-items: start }
+.scene { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; min-width: 0 }
+.scene.wide { grid-column: span 3; display: grid; grid-template-columns: 1.6fr 1fr; align-items: center }
+.scene img { width: 100% }
+.scene .t { padding: 14px 16px 16px; display: grid; gap: 4px }
+.scene h3 { font-size: 17px; font-weight: 700 }
+.scene p { color: var(--muted); font-size: 14.5px }
+.buzz { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--muted) }
+.buzz::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--c, var(--coral)); box-shadow: 0 0 8px var(--c, var(--coral)) }
+.phonepair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 12px 0; background: var(--bg) }
+.phonepair img { width: 100%; height: 150px; object-fit: cover; object-position: top; border-radius: 10px }
 
-/* app */
-.shots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px }
-.shots figure { margin: 0; display: grid; gap: 12px }
-.shots img { width: 100%; aspect-ratio: 1179/2556; object-fit: cover; object-position: top; border-radius: 18px; border: 1px solid var(--hair) }
-.shots figcaption { font-family: var(--serif); font-size: 18px }
+/* app strip */
+.shots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 22px }
+.shots figure { margin: 0; display: grid; gap: 8px }
+.shots img { border-radius: 18px; border: 1px solid var(--line); aspect-ratio: 1179/2556; object-fit: cover; object-position: top; width: 100% }
+.shots figcaption { font-size: 14px; font-weight: 600; text-align: center }
 
-/* notes */
-.notes { border-top: 1px solid var(--hair) }
-details { border-bottom: 1px solid var(--hair); padding-block: 18px }
-summary { cursor: pointer; font-family: var(--serif); font-size: 22px; list-style: none; display: flex; justify-content: space-between; align-items: baseline }
-summary::-webkit-details-marker { display: none }
-summary::after { content: "+"; font-family: var(--sans); color: var(--muted); font-size: 20px }
-details[open] summary::after { content: "−" }
-details > div { margin-top: 14px; max-width: 760px; color: var(--muted); overflow-x: auto }
-details ul { margin: 0; padding-left: 18px }
+/* details */
+details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; margin-top: 12px }
+summary { cursor: pointer; font-weight: 700 }
+details > div { margin-top: 12px; overflow-x: auto }
+table { border-collapse: collapse; width: 100%; min-width: 440px; font-size: 15px }
+td { padding: 8px 6px; border-bottom: 1px solid var(--line) }
+td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap }
+details ul { margin: 0; padding-left: 18px; color: var(--muted) }
 details li { margin-bottom: 6px }
-details b { color: var(--ink); font-weight: 600 }
-table { border-collapse: collapse; width: 100%; min-width: 420px; font-size: 15.5px }
-td { padding: 9px 0; border-bottom: 1px solid var(--hair) }
-td:last-child { text-align: right; color: var(--ink); font-family: var(--mono); font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums }
-tr:last-child td { border-bottom: 0 }
 
-footer { border-top: 1px solid var(--hair); padding-block: 30px 48px; font-size: 14px; color: var(--muted) }
-footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px }
+footer { border-top: 1px solid var(--line); padding-block: 28px 44px; color: var(--muted); font-size: 14px }
 
-@media (max-width: 880px) {
-  .hero, .head { grid-template-columns: 1fr; gap: 28px }
-  .hero { padding-block: 40px 52px }
-  .plates { grid-template-columns: 1fr 1fr }
-  .plate.lead { grid-template-columns: 1fr }
-  .shots { grid-template-columns: 1fr 1fr }
+@media (max-width: 820px) {
+  .steps, .scenes, .shots { grid-template-columns: 1fr 1fr }
+  .scene.wide { grid-column: span 2; grid-template-columns: 1fr }
 }
-@media (max-width: 540px) {
-  .plates { grid-template-columns: 1fr }
-  .mast nav { display: none }
-  section { padding-block: 52px }
+@media (max-width: 520px) {
+  .steps, .scenes { grid-template-columns: 1fr }
+  .scene.wide { grid-column: span 1 }
+  section { padding-block: 40px }
 }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }
 </style>
 </head>
 <body>
 
-<div class="wrap mast">
-  <a class="name" href="#"><img src="assets/app-icon.png" alt="">Spidey Sense</a>
-  <nav><a href="#moments">Moments</a><a href="#app">App</a><a href="#notes">Notes</a><a href="https://github.com/jaidevshriram/spidey-sense">GitHub</a></nav>
-</div>
-
 <header class="wrap hero">
-  <div>
-    <h1>A sixth sense for <em>what you missed.</em></h1>
-    <dl class="wwh">
-      <div><dt>What</dt><dd>Smart glasses that tap your wrist about things you haven't looked at.</dd></div>
-      <div><dt>How</dt><dd>The glasses follow your eyes, Claude spots what matters, and a small Dot buzzes only if you missed it.</dd></div>
-      <div><dt>Why</dt><dd>Our eyes are often on a phone or lost in thought. One tap at the right moment, and you see the cable, the box or the fist in time.</dd></div>
-    </dl>
-    <div class="links"><a href="#moments">See it work</a><a href="https://github.com/jaidevshriram/spidey-sense">Read the code</a></div>
-  </div>
-  <div>
-    <div class="film"><video controls playsinline muted preload="metadata" poster="assets/demo-poster.jpg"><source src="assets/demo.mp4" type="video/mp4"></video></div>
-    <p class="meta">The demo · 75 s · real footage from test walks</p>
+  <div class="brand"><img src="assets/app-icon.png" alt="">Spidey Sense</div>
+  <div class="hero-grid">
+    <div class="txt">
+      <h1>A sixth sense for <span>what you missed.</span></h1>
+      <dl class="wwh">
+        <div><dt>What</dt><dd>Smart glasses that tap your wrist about things you <b>haven't looked at</b>.</dd></div>
+        <div><dt>How</dt><dd>The glasses track where your eyes are, Claude spots what matters, and a small Dot buzzes only if you missed it.</dd></div>
+        <div><dt>Why</dt><dd>Our eyes are often on a phone or lost in thought. One tap at the right moment means you see the cable, the box or the fist in time.</dd></div>
+      </dl>
+      <div class="btns"><a class="btn" href="#scenarios">See it work</a><a class="btn ghost" href="https://github.com/jaidevshriram/spidey-sense">Code on GitHub</a></div>
+    </div>
+    <div class="video">
+      <video controls playsinline muted preload="metadata" poster="assets/demo-poster.jpg"><source src="assets/demo.mp4" type="video/mp4"></video>
+    </div>
   </div>
 </header>
 
-<section id="moments">
-  <div class="wrap">
-    <div class="head">
-      <h2>Four moments from our test walks</h2>
-      <p>Each one is a real take. On the left, a friend's camera; on the right, what the glasses saw and why the Dot buzzed.</p>
-    </div>
-    <div class="plates">
-      <figure class="plate lead">
-        <img src="assets/demo-screen.jpg" alt="The glasses' view: gaze on the phone, a box around a cardboard box ahead, and the buzz banner">
-        <figcaption>
-          <span class="meta"><span class="amber">Amber</span> · 1.7 s from frame to buzz</span>
-          <h3>Reading my phone, a box ahead</h3>
-          <p>My eyes were on the screen, so Spidey tapped me about the box. Had I looked at it first, it would have stayed quiet.</p>
-        </figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/scene-wire.jpg" alt="Walking toward a cable while reading a phone, next to what the glasses saw" loading="lazy">
-        <figcaption><span class="meta"><span class="amber">Amber</span> · before the cable</span><h3>A cord across the walkway</h3><p>Walking and reading. The buzz came before my foot did.</p></figcaption>
-      </figure>
-      <figure class="plate">
-        <img src="assets/scene-punch.jpg" alt="A friend swings a slow punch, next to what the glasses saw" loading="lazy">
-        <figcaption><span class="meta"><span class="red">Red</span> · 1.8 s from frame to buzz</span><h3>A fist from the side</h3><p>Danger gets a stronger, red buzz.</p></figcaption>
-      </figure>
-      <figure class="plate">
-        <div class="pair"><img src="assets/talk-button.jpg" alt="Hold to tell Spidey" loading="lazy"><img src="assets/voice-draft-sheet.jpg" alt="The drafted trigger to confirm" loading="lazy"></div>
-        <figcaption><span class="meta">Spoken, not typed</span><h3>"Warn me if someone waves at me"</h3><p>Say it, and Spidey writes the trigger for you to confirm.</p></figcaption>
-      </figure>
-    </div>
+<section class="wrap" id="scenarios">
+  <p class="label">Scenarios</p>
+  <h2>Real moments from our test walks</h2>
+  <div class="scenes">
+    <article class="scene wide">
+      <img src="assets/demo-screen.jpg" alt="The glasses' view: gaze on the phone, a box around a cardboard box ahead, and the buzz banner">
+      <div class="t">
+        <span class="buzz" style="--c: var(--amber)">Amber buzz · 1.7 s</span>
+        <h3>Reading my phone. Box ahead.</h3>
+        <p>My eyes were on the phone (coral ring), so Spidey tapped me about the box. Look at it first, and it stays quiet.</p>
+      </div>
+    </article>
+    <article class="scene">
+      <img src="assets/scene-wire.jpg" alt="Walking toward a cable while reading a phone, next to what the glasses saw">
+      <div class="t"><span class="buzz" style="--c: var(--amber)">Amber buzz</span><h3>A cable on the floor</h3><p>Buzzed before I reached it.</p></div>
+    </article>
+    <article class="scene">
+      <img src="assets/scene-punch.jpg" alt="A friend swings a slow punch, next to what the glasses saw">
+      <div class="t"><span class="buzz">Red buzz · 1.8 s</span><h3>A fist from the side</h3><p>Danger gets a stronger buzz.</p></div>
+    </article>
+    <article class="scene">
+      <div class="phonepair"><img src="assets/talk-button.jpg" alt="Hold to tell Spidey"><img src="assets/voice-draft-sheet.jpg" alt="Spidey heard you: a drafted trigger"></div>
+      <div class="t"><span class="buzz" style="--c: var(--heart)">Your words</span><h3>"Warn me if someone waves at me"</h3><p>Say it, and Spidey writes the trigger.</p></div>
+    </article>
   </div>
 </section>
 
-<section id="app">
-  <div class="wrap">
-    <div class="head">
-      <h2>Why it buzzed, at a glance</h2>
-      <p>Every buzz is kept with the picture the glasses saw and a sentence on why.</p>
-    </div>
-    <div class="shots">
-      <figure><img src="assets/home-real-events.jpg" alt="Home with recent buzzes" loading="lazy"><figcaption>What buzzed</figcaption></figure>
-      <figure><img src="assets/event-detail.jpg" alt="Event detail with the picture the glasses saw" loading="lazy"><figcaption>What Spidey saw</figcaption></figure>
-      <figure><img src="assets/wizard-2-when.jpg" alt="Choose when to warn you" loading="lazy"><figcaption>Your rules</figcaption></figure>
-      <figure><img src="assets/home-heart.jpg" alt="Heart rate from Oura" loading="lazy"><figcaption>Heart rate, from Oura</figcaption></figure>
-    </div>
+<section class="wrap" id="app">
+  <p class="label">The app</p>
+  <h2>Why it buzzed, at a glance</h2>
+  <div class="shots">
+    <figure><img src="assets/home-real-events.jpg" alt="Home with recent buzzes" loading="lazy"><figcaption>What buzzed</figcaption></figure>
+    <figure><img src="assets/event-detail.jpg" alt="Event detail with the picture the glasses saw" loading="lazy"><figcaption>What Spidey saw</figcaption></figure>
+    <figure><img src="assets/wizard-2-when.jpg" alt="Choose when to warn you" loading="lazy"><figcaption>Your rules</figcaption></figure>
+    <figure><img src="assets/home-heart.jpg" alt="Heart rate from Oura" loading="lazy"><figcaption>Oura heart rate</figcaption></figure>
   </div>
 </section>
 
-<section id="notes">
-  <div class="wrap">
-    <div class="head"><h2>Notes</h2><p>For anyone who wants the detail.</p></div>
-    <div class="notes">
-      <details>
-        <summary>What it's made of</summary>
-        <div><ul>
-          <li><b>Pupil Labs Neon</b> eye-tracking glasses, streaming through their companion phone to a Mac.</li>
-          <li><b>Claude Haiku</b> checks each frame against your triggers. Your real gaze decides whether you noticed.</li>
-          <li><b>DataFeel Dot</b> on the wrist, over Bluetooth, with a colour per trigger.</li>
-          <li><b>An iPhone app</b> with Spidey's voice (ElevenLabs) and spoken triggers. Optional <b>Oura</b> heart rate.</li>
-        </ul></div>
-      </details>
-      <details>
-        <summary>How fast, how accurate</summary>
-        <div><table>
-          <tr><td>Glasses video to the Mac</td><td>~90 ms</td></tr>
-          <tr><td>Something in view to a buzz, in real takes</td><td>1–2 s</td></tr>
-          <tr><td>Dot buzz over Bluetooth</td><td>117 ms</td></tr>
-          <tr><td>Obstacles caught in 56 hand-labelled frames</td><td>96%</td></tr>
-          <tr><td>Fist frames caught after rewording the trigger</td><td>14 / 14</td></tr>
-        </table></div>
-      </details>
-      <details>
-        <summary>What doesn't work yet</summary>
-        <div><ul>
-          <li>The glasses' microphone gives no audio, so hearing is built but switched off.</li>
-          <li>Oura readings are only as fresh as the ring's last sync.</li>
-          <li>The Mac does the thinking, so it rides along in a backpack.</li>
-        </ul></div>
-      </details>
-    </div>
-  </div>
+<section class="wrap" id="more">
+  <p class="label">Under the hood</p>
+  <h2>For the curious</h2>
+  <details>
+    <summary>What it's made of</summary>
+    <div><ul>
+      <li><b>Pupil Labs Neon</b> eye-tracking glasses, streaming through their Companion phone's hotspot to a Mac.</li>
+      <li><b>Claude Haiku</b> checks every frame against your triggers; your real gaze decides whether you noticed.</li>
+      <li><b>DataFeel Dot</b> on the wrist over Bluetooth: vibration and a colour per trigger.</li>
+      <li><b>iPhone app</b> with Spidey's voice (ElevenLabs) and talk-to-add triggers. Optional <b>Oura</b> heart rate.</li>
+    </ul></div>
+  </details>
+  <details>
+    <summary>How fast and how accurate</summary>
+    <div><table>
+      <tr><td>Glasses video to the Mac</td><td>~90 ms</td></tr>
+      <tr><td>Something in view to a buzz, in real takes</td><td>1–2 s</td></tr>
+      <tr><td>Dot buzz over Bluetooth</td><td>117 ms</td></tr>
+      <tr><td>Obstacles caught in 56 hand-labelled frames</td><td>96%</td></tr>
+      <tr><td>Fist frames caught after rewording the trigger</td><td>14 / 14</td></tr>
+    </table></div>
+  </details>
+  <details>
+    <summary>What doesn't work yet</summary>
+    <div><ul>
+      <li>The glasses' microphone gives no audio, so hearing is built but off.</li>
+      <li>Oura readings are only as fresh as the ring's last sync.</li>
+      <li>The Mac does the thinking, so it rides along in a backpack.</li>
+    </ul></div>
+  </details>
 </section>
 
-<footer><div class="wrap"><span>Spidey Sense · INTERFACE hackathon, October 2026</span><a href="https://github.com/jaidevshriram/spidey-sense">github.com/jaidevshriram/spidey-sense</a></div></footer>
+<footer><div class="wrap">Spidey Sense · built at the INTERFACE hackathon, October 2026 · <a href="https://github.com/jaidevshriram/spidey-sense">GitHub</a></div></footer>
 </body>
 </html>
