@@ -11,9 +11,12 @@ import UIKit
 //                trace{id, ts, t, hazard, urgency, reason, latency_ms, n_images, paused, stale, error, raw,
 //                      thumb?, near_miss?, decisions[{id, name, fired, matched, why, gaze_mode, haiku_reason}]}
 //                      (only while subscribed)
+//                v3.5: speech{event_id, ts, text, format, audio_b64}, voice.draft{id?, ok, transcript, summary, rule, error},
+//                      settings.voice{speak, available, voice_id}, status.source{listening, last_heard}
 // app -> server: rules.upsert{rule}, rules.delete{id}, rules.reset{}, feedback{event_id, ts, verdict},
 //                command{name, args}, haptic.subscribe/led/vibe.sequence/vibe.manual/preset/thermal/stop_all,
-//                link.ping{id, t_app, flash}, trace.subscribe{on} (resent every ~2 s; engine stops after 5 s)
+//                link.ping{id, t_app, flash}, trace.subscribe{on} (resent every ~2 s; engine stops after 5 s),
+//                v3.5: voice.command{id, audio_b64, format}, command voice{speak}
 //
 // Events are still parsed loosely into `HapticEvent` (Model.swift) so the live log keeps working
 // with older engines and the test server.
@@ -403,10 +406,13 @@ struct SourceStatus: Decodable, Hashable {
     var walking: Bool?
     var cadenceSpm: Double?     // steps per minute, while walking
     var turning: Bool?
+    // v3.5: the glasses' microphone (absent on engines without hearing).
+    var listening: Bool?
+    var lastHeard: String?
 
     enum CodingKeys: String, CodingKey {
-        case type, live, fps, worn, battery, walking, turning
-        case gazeHz = "gaze_hz", delayMs = "delay_ms", cadenceSpm = "cadence_spm"
+        case type, live, fps, worn, battery, walking, turning, listening
+        case gazeHz = "gaze_hz", delayMs = "delay_ms", cadenceSpm = "cadence_spm", lastHeard = "last_heard"
     }
 
     init(type: String? = nil, live: Bool? = nil, fps: Double? = nil, gazeHz: Double? = nil, worn: Bool? = nil,
@@ -422,6 +428,10 @@ struct SourceStatus: Decodable, Hashable {
         battery = c.lenient(Double.self, .battery); delayMs = c.lenient(Double.self, .delayMs)
         walking = c.lenient(Bool.self, .walking); cadenceSpm = c.lenient(Double.self, .cadenceSpm)
         turning = c.lenient(Bool.self, .turning)
+        listening = c.lenient(Bool.self, .listening)
+        lastHeard = c.lenient(String.self, .lastHeard).flatMap {
+            let t = $0.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t
+        }
     }
 
     /// "walking · 112 steps/min · turning" / "still"; nil when the engine sends no motion state.
@@ -575,6 +585,103 @@ struct LinkInfo: Codable, Hashable {
 struct EngineSettings: Codable, Hashable {
     var quiet: Bool = false
     var intensity: Double = 1.0  // 0...1. Engine stores + broadcasts it; hardware scaling is TODO.
+    var voice: VoiceSettings?    // v3.5; nil = engine without spoken explanations
+
+    enum CodingKeys: String, CodingKey { case quiet, intensity, voice }
+    init(quiet: Bool = false, intensity: Double = 1.0, voice: VoiceSettings? = nil) {
+        self.quiet = quiet; self.intensity = intensity; self.voice = voice
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        quiet = c.lenient(Bool.self, .quiet) ?? false
+        intensity = c.lenient(Double.self, .intensity) ?? 1.0
+        voice = c.lenient(VoiceSettings.self, .voice)
+    }
+}
+
+// MARK: - v3.5 voice (docs/protocol.md "v3.5")
+
+/// How often Spidey speaks: `settings.voice.speak` and `command voice {speak}`.
+enum VoiceSpeak: String, CaseIterable, Identifiable {
+    case all, urgent, off
+    var id: String { rawValue }
+    var label: String {
+        switch self { case .all: "Every buzz"; case .urgent: "Urgent only"; case .off: "Off" }
+    }
+}
+
+/// `settings.voice`: {speak, available, voice_id}.
+struct VoiceSettings: Codable, Hashable {
+    var speak: String = VoiceSpeak.urgent.rawValue
+    var available = false       // false = no ElevenLabs key on the Mac
+    var voiceID: String?
+
+    enum CodingKeys: String, CodingKey { case speak, available, voiceID = "voice_id" }
+    init(speak: String = VoiceSpeak.urgent.rawValue, available: Bool = false, voiceID: String? = nil) {
+        self.speak = speak; self.available = available; self.voiceID = voiceID
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        speak = c.lenient(String.self, .speak).flatMap { VoiceSpeak(rawValue: $0)?.rawValue } ?? VoiceSpeak.urgent.rawValue
+        available = c.lenient(Bool.self, .available) ?? false
+        voiceID = c.lenient(String.self, .voiceID)
+    }
+    var mode: VoiceSpeak { VoiceSpeak(rawValue: speak) ?? .urgent }
+}
+
+/// `speech`: one spoken line (base64 mp3), newest wins. `event_id` null = not about an event (e.g. a draft summary).
+struct SpeechMessage: Decodable {
+    var eventID: String?
+    var ts: Double?
+    var text: String?
+    var format: String?
+    var audio: Data?
+
+    enum CodingKeys: String, CodingKey { case ts, text, format, eventID = "event_id", audioB64 = "audio_b64" }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // The engine sends the event's numeric id; accept a string too.
+        eventID = c.lenient(String.self, .eventID) ?? c.lenient(Int.self, .eventID).map(String.init)
+        ts = c.lenient(Double.self, .ts); text = c.lenient(String.self, .text); format = c.lenient(String.self, .format)
+        audio = c.lenient(String.self, .audioB64).flatMap { Data(base64Encoded: $0, options: .ignoreUnknownCharacters) }
+    }
+}
+
+/// `voice.draft`: the engine's answer to `voice.command`.
+struct VoiceDraftMessage: Decodable {
+    var id: String?
+    var ok: Bool
+    var transcript: String?
+    var summary: String?
+    var rule: SenseRule?
+    var error: String?
+
+    enum CodingKeys: String, CodingKey { case id, ok, transcript, summary, rule, error }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.lenient(String.self, .id) ?? c.lenient(Int.self, .id).map(String.init)
+        ok = c.lenient(Bool.self, .ok) ?? false
+        func clean(_ s: String?) -> String? {
+            s.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        transcript = clean(c.lenient(String.self, .transcript)); summary = clean(c.lenient(String.self, .summary))
+        rule = c.lenient(SenseRule.self, .rule); error = clean(c.lenient(String.self, .error))
+    }
+}
+
+/// A trigger Spidey drafted from what you said.
+struct VoiceDraft: Equatable {
+    var transcript: String
+    var summary: String
+    var rule: SenseRule
+}
+
+/// The Talk-to-Spidey request, from release to answer.
+enum VoiceRequest: Equatable {
+    case idle
+    case thinking
+    case draft(VoiceDraft)
+    case failed(message: String, transcript: String?)
 }
 
 // MARK: - Server -> app (everything except events, which use HapticEvent)
@@ -817,7 +924,7 @@ struct FeedbackMessage: Encodable {
     enum CodingKeys: String, CodingKey { case type, ts, verdict, eventId = "event_id" }
 }
 
-enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", resetDot = "reset_dot", setIntensity = "set_intensity", quiet, pause }
+enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", resetDot = "reset_dot", setIntensity = "set_intensity", quiet, pause, voice }
 
 /// Small JSON value for command args, and for round-tripping rule keys the app doesn't model (RuleCondition.extra).
 indirect enum JSONValue: Codable, Hashable {
@@ -870,6 +977,18 @@ struct CommandMessage: Encodable {
     static func quiet(_ on: Bool) -> Self { .init(name: .quiet, args: ["on": .bool(on)]) }
     /// v3: while paused, detection keeps running for the Log but nothing reaches the Dot.
     static func pause(_ on: Bool) -> Self { .init(name: .pause, args: ["on": .bool(on)]) }
+    /// v3.5: when Spidey speaks its explanations (all | urgent | off).
+    static func voice(_ speak: VoiceSpeak) -> Self { .init(name: .voice, args: ["speak": .string(speak.rawValue)]) }
+}
+
+/// v3.5: a spoken request for a new trigger (AAC m4a, 16 kHz mono). The engine acks, then broadcasts `voice.draft`
+/// with the same `id`.
+struct VoiceCommand: Encodable {
+    let type = "voice.command"
+    var id: String
+    var audioB64: String
+    var format = "m4a"
+    enum CodingKeys: String, CodingKey { case type, id, format, audioB64 = "audio_b64" }
 }
 
 // MARK: - Haptics tab (app -> server). Each gets an `ack` with `for`, `ok`, `ms`.

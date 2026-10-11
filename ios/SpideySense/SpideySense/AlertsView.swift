@@ -73,6 +73,8 @@ struct AlertsView: View {
     @State private var wizard: WizardLaunch?
     @State private var technical: SenseRule?
     @State private var confirmDelete: SenseRule?
+    @State private var voiceSheet = false
+    @State private var voiceEdit: SenseRule?     // "Edit" in the voice sheet: opens the wizard once the sheet is gone
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var live: Bool { stream.isLive }
@@ -112,7 +114,9 @@ struct AlertsView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .accessibilityHint("Set up a new alert, one question at a time")
 
-                    if !live { offlineNote }
+                    TalkToSpideyButton(stream: stream) { voiceSheet = true }
+
+                    if !live && !VoiceDemo.active { offlineNote }
 
                     if !sortedRules.isEmpty {
                         VStack(spacing: 14) {
@@ -141,6 +145,12 @@ struct AlertsView: View {
             .fullScreenCover(item: $wizard) { w in
                 AlertWizard(stream: stream, original: w.original, template: w.template)
             }
+            .sheet(isPresented: $voiceSheet, onDismiss: {
+                stream.clearVoiceRequest()
+                if let r = voiceEdit { voiceEdit = nil; wizard = WizardLaunch(original: nil, template: r) }
+            }) {
+                VoiceDraftSheet(stream: stream) { voiceEdit = $0 }
+            }
             .sheet(item: $technical) { r in
                 SenseBuilder(original: r, existingIDs: Set(stream.rules.map(\.id)), stream: stream) { stream.upsert($0) }
             }
@@ -156,6 +166,10 @@ struct AlertsView: View {
                 // `-editAlert <id>` opens that alert in the wizard (Review screen).
                 if let id = UserDefaults.standard.string(forKey: "editAlert"),
                    let r = stream.rules.first(where: { $0.id == id }) { edit(r) }
+                // `-voiceDraftDemo YES` opens the Talk-to-Spidey sheet on a sample draft.
+                if UserDefaults.standard.bool(forKey: "voiceDraftDemo") {
+                    stream.showVoiceDraftDemo(); voiceSheet = true
+                }
             }
         }
     }

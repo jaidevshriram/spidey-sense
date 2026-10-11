@@ -569,3 +569,11 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 
 ## 2026-10-11 · Oura cloud heart rate (proof of concept with the real ring)
 - No charger, no re-pairing: new heart backend `oura_cloud` polls Oura API v2 /v2/usercollection/heartrate every 60 s (ring -> phone app -> cloud: minutes of delay, ~5-min spacing). Token: OURA_TOKEN (personal access token) in .env, or OAuth via tools/oura_oauth.py (token 0600 in ~/.config/spidey, single-use refresh tokens stored each time). Baseline for cloud = 1 h median (window_s 3600). Card: connected = API reachable; detail "last reading N min ago (awake)". Tests: test_oura_cloud (5, HTTP mocked).
+
+## 2026-10-11 · Voice (ElevenLabs) + hearing + Oura connected
+- Voice out (spidey/voice.py): played events -> short line -> ElevenLabs eleven_flash_v2_5 TTS (~0.3-0.8 s) -> `speech` message -> app plays it (AirPods/phone), newest wins, drops lines >4 s old; speak all|urgent|off (command "voice", settings.voice).
+- Voice in: app hold-to-talk m4a -> `voice.command` -> scribe_v2 STT (~0.5 s) -> Haiku drafts a rule (validated/clamped via Rule) -> `voice.draft` -> app confirmation sheet -> rules.upsert.
+- Hearing (spidey/hearing.py): Neon mic -> 3 s windows every 1.5 s (silence-gated) -> scribe_v2 with sound tags -> "Heard (last 5 s): ... · sounds: ..." appended to the same Haiku call (single detection path). Sound-only matches have no bbox.
+- App v3.5: voice playback, "Spidey's voice" setting, "Hold to tell Spidey" + draft sheet, hearing line on the Debug Neon card. Not yet tested on a device or with the glasses.
+- Oura: OAuth via the new developer portal (redirect http://localhost:8099/callback) works; token saved 0600 in ~/.config/spidey. The cloud has heart rate up to 2026-09-24 21:30, nothing newer: the ring needs to sync via the Oura app.
+- 116/116 tests.

@@ -37,7 +37,8 @@ struct HomeView: View {
                         if !fresh.isEmpty {
                             VStack(spacing: 16) {
                                 ForEach(Array(fresh.enumerated()), id: \.element.id) { i, g in
-                                    FreshCard(group: g, hero: i == 0, now: now, accent: color(g), expand: i == 0 && expandHero) { selected = g }
+                                    FreshCard(group: g, hero: i == 0, now: now, accent: color(g), expand: i == 0 && expandHero,
+                                              speaking: isSpeaking(g)) { selected = g }
                                         .matchedGeometryEffect(id: g.id, in: ns)
                                         .transition(insertion)
                                 }
@@ -123,6 +124,12 @@ struct HomeView: View {
                                                removal: .opacity)
     }
 
+    /// v3.5: Spidey is saying this card's explanation out loud right now.
+    private func isSpeaking(_ g: EventGroup) -> Bool {
+        guard let id = stream.speech.speakingEventID else { return false }
+        return g.events.contains { String($0.id) == id }
+    }
+
     private func color(_ g: EventGroup) -> Color {
         ledColor(for: g.latest.triggerID, pattern: g.latest.pattern, rules: stream.rules)
     }
@@ -169,6 +176,7 @@ struct FreshCard: View {
     let now: Date
     let accent: Color
     var expand = false            // demo / screenshot hook: open the picture
+    var speaking = false          // v3.5: this card's explanation is playing
     let open: () -> Void
 
     @State private var showPhoto = false
@@ -206,6 +214,7 @@ struct FreshCard: View {
                 Circle().fill(accent).frame(width: 10, height: 10)
                 Text(e.alertName).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.inkSecondary)
                     .lineLimit(1)
+                if speaking { SpeakingGlyph().transition(.scale(scale: 0.6).combined(with: .opacity)) }
                 Spacer(minLength: 8)
                 if group.snapshotEvent != nil {
                     Button {
@@ -258,6 +267,7 @@ struct FreshCard: View {
         .onTapGesture(perform: open)
         .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Open details", open)
+        .animation(Theme.motion(reduceMotion), value: speaking)
         .onAppear { if expand { showPhoto = true } }
         .onChange(of: expand) { _, on in if on { withAnimation(Theme.motion(reduceMotion)) { showPhoto = true } } }
         .onChange(of: group.count) { _, _ in

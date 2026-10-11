@@ -46,6 +46,13 @@ final class EventStream {
     private(set) var ackLog: [AckEntry] = []                     // newest first, max 30
     private(set) var lastThermalAck: AckMessage?
 
+    // v3.5 voice: spoken explanations and "Hold to tell Spidey".
+    let speech = SpeechPlayer()
+    private(set) var voiceRequest: VoiceRequest = .idle
+    @ObservationIgnored private var voiceRequestID: String?
+    @ObservationIgnored private var voiceTimeout: Task<Void, Never>?
+    static let voiceTimeoutS: Double = 20
+
     // Log tab "Live decisions": one `trace` per Haiku call while subscribed, newest first.
     private(set) var traces: [Trace] = []
     private let maxTraces = 50
@@ -119,6 +126,9 @@ final class EventStream {
                 droppedLogged = true
             }
             status = .disconnected
+            if voiceRequest == .thinking {
+                failVoice("Lost the connection to your Spidey hub. Try again once it's back.")
+            }
             telemetry = nil
             engineStatus = nil
             devicesAreSample = true   // device cards fall back to sample data while offline
@@ -166,6 +176,10 @@ final class EventStream {
             }
         case "settings":
             if let s = try? dec.decode(EngineSettings.self, from: data) { settings = s }
+        case "speech":
+            if let m = try? dec.decode(SpeechMessage.self, from: data) { playSpeech(m) }
+        case "voice.draft":
+            if let m = try? dec.decode(VoiceDraftMessage.self, from: data) { handleVoiceDraft(m) }
         case "ack":
             if let a = try? dec.decode(AckMessage.self, from: data) { handleAck(a) }
         case "error":
@@ -236,6 +250,10 @@ final class EventStream {
         }
         // An engine without v3 rejects `pause`: undo the optimistic local switch.
         if kind == "command", a.name == "pause", a.ok == false { paused = engineStatus?.paused ?? false }
+        // v3.5: the engine refused the recording (no voice key, bad audio): no draft will follow.
+        if kind == "voice.command", a.ok == false, voiceRequest == .thinking {
+            failVoice(Self.friendlyVoiceError(a.error))
+        }
         logAck(kind: what, ok: a.ok ?? false, ms: a.ms, note: note)
     }
 
@@ -376,11 +394,109 @@ final class EventStream {
         send(LinkPing(id: pingSeq, tApp: Date().timeIntervalSince1970, flash: flash))
     }
 
+    // MARK: - v3.5 voice
+
+    /// This phone's copy of the voice choice, so "Off" silences the phone even before the engine echoes it.
+    static let voiceSpeakKey = "voiceSpeak"
+
+    /// The voice choice in effect: the engine's, else the last one picked on this phone.
+    var voiceSpeak: VoiceSpeak {
+        if let v = settings.voice { return v.mode }
+        return VoiceSpeak(rawValue: UserDefaults.standard.string(forKey: Self.voiceSpeakKey) ?? "") ?? .urgent
+    }
+
+    private func playSpeech(_ m: SpeechMessage) {
+        guard let audio = m.audio, !audio.isEmpty else { return }
+        // App-side mute: "Off" on this phone wins over an engine that still speaks; never talk over a recording.
+        guard voiceSpeak != .off, !SpideyAudioSession.recording else { return }
+        speech.play(audio, eventID: m.eventID, text: m.text, format: m.format)
+    }
+
+    /// Sends a recorded request. Offline: refused (the button is disabled then anyway).
+    @discardableResult
+    func sendVoiceCommand(_ audio: Data) -> Bool {
+        guard isLive else {
+            failVoice("Your Spidey hub isn't connected, so Spidey can't hear you right now.")
+            return false
+        }
+        let id = UUID().uuidString.prefix(8).lowercased()
+        voiceRequestID = String(id)
+        voiceRequest = .thinking
+        guard send(VoiceCommand(id: String(id), audioB64: audio.base64EncodedString())) else {
+            failVoice("Couldn't reach your Spidey hub. Try again in a moment.")
+            return false
+        }
+        voiceTimeout?.cancel()
+        voiceTimeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.voiceTimeoutS))
+            guard let self, !Task.isCancelled, self.voiceRequest == .thinking else { return }
+            self.failVoice("Spidey took too long to answer. Check that the Mac is awake, then try again.")
+        }
+        return true
+    }
+
+    private func handleVoiceDraft(_ m: VoiceDraftMessage) {
+        guard voiceRequest == .thinking else { return }             // late answer after a timeout / cancel
+        if let id = m.id, let mine = voiceRequestID, id != mine { return }   // another phone's request
+        voiceTimeout?.cancel()
+        if m.ok, let rule = m.rule {
+            voiceRequest = .draft(VoiceDraft(transcript: m.transcript ?? "", summary: m.summary ?? RulePlain.describe(rule),
+                                             rule: rule))
+        } else {
+            failVoice(Self.friendlyVoiceError(m.error), transcript: m.transcript)
+        }
+    }
+
+    private func failVoice(_ message: String, transcript: String? = nil) {
+        voiceTimeout?.cancel()
+        voiceRequest = .failed(message: message, transcript: transcript)
+    }
+
+    /// Engine errors are technical ("didn't catch that (empty transcript)"); keep the sheet friendly.
+    static func friendlyVoiceError(_ e: String?) -> String {
+        let s = (e ?? "").lowercased()
+        if s.contains("empty transcript") || s.contains("didn't catch") || s.contains("no audio") {
+            return "Spidey didn't hear anything. Hold the button and speak a little closer to the phone."
+        }
+        if s.contains("unavailable") || s.contains("elevenlabs") {
+            return "Spidey's voice isn't set up on the Mac yet. Add an ElevenLabs key there to turn it on."
+        }
+        return "Spidey couldn't turn that into a trigger. Try saying it another way."
+    }
+
+    /// The sheet was closed: forget the request (a late answer is ignored).
+    func clearVoiceRequest() {
+        voiceTimeout?.cancel()
+        voiceRequest = .idle
+        voiceRequestID = nil
+    }
+
+    /// Screenshot hooks (`-voiceDemo YES`, `-voiceDraftDemo YES`): sample voice settings and a sample draft.
+    func applyVoiceDemo(available: Bool = true) {
+        settings.voice = VoiceSettings(speak: VoiceSpeak.urgent.rawValue, available: available, voiceID: "demo")
+    }
+
+    func showVoiceDraftDemo() {
+        var rule = SenseRule(id: "dog_near_me", name: "Dog coming close", source: SenseSource.neon.rawValue,
+                             cond: RuleCondition(unseen: true, minUrgency: 0.5), feel: "urgent", cooldownS: 60,
+                             kind: "custom", describe: "a dog coming close to me", rgb: [255, 150, 0])
+        rule.gazeMode = GazeMode.unseen.rawValue; rule.noticeMemoryS = 3; rule.temporal = false
+        voiceRequest = .draft(VoiceDraft(transcript: "Hey Spidey, buzz me if a dog comes near me and I haven't seen it",
+                                         summary: "Buzz me when a dog comes near me, only if I haven't noticed it.",
+                                         rule: rule))
+    }
+
     func command(_ c: CommandMessage) {
         switch c.name {   // mirror locally so the UI reacts even before the engine echoes settings
         case .quiet: if case .bool(let on)? = c.args["on"] { settings.quiet = on }
         case .setIntensity: if case .number(let v)? = c.args["value"] { settings.intensity = v }
         case .pause: if case .bool(let on)? = c.args["on"] { paused = on }
+        case .voice:
+            if case .string(let s)? = c.args["speak"] {
+                UserDefaults.standard.set(s, forKey: Self.voiceSpeakKey)
+                if settings.voice != nil { settings.voice?.speak = s }
+                if s == VoiceSpeak.off.rawValue { speech.stop() }
+            }
         default: break
         }
         send(c)

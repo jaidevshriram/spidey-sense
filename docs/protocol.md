@@ -330,3 +330,47 @@ Trigger results may carry `ttc_s` (seconds to contact, optional): it appears on 
 rule's extra, alongside `gaze_mode` / `looked_at_s_ago`) and may appear on `trace` decisions; the event `why` gains
 "(about 2.1 s away)". Decision `why` strings for the new gates: `not walking (only while walking)`, `not approaching it (no time-to-contact yet)`,
 `reaching it in 4.2 s (> 3 s)`, `stale: result 3.1 s old (max 6 s)`, `stale: the view changed 0.8 s ago, after this frame`.
+
+## v3.5: Spidey's voice (ElevenLabs): spoken explanations, talk-to-Spidey triggers, hearing (added 2026-10-11)
+
+All additions are optional and decoded leniently. Older apps ignore the new messages; older engines omit them.
+
+**Spoken explanations** (engine -> app), newest wins:
+```json
+{"type": "speech", "event_id": 412, "ts": 1791684230.1, "text": "A dog is coming up on your left.",
+ "format": "mp3", "audio_b64": "<base64 mp3>"}
+```
+`event_id` is the event the line explains (number or string; `null` = not about an event, e.g. a spoken draft summary).
+The app plays it at once with AVAudioPlayer and stops any line still playing. Audio session: `.playback`, mode
+`.voicePrompt`, options `[.duckOthers, .interruptSpokenAudioAndMixWithOthers]` (music ducks, podcasts pause; routes to
+AirPods), activated per line and deactivated with `.notifyOthersOnDeactivation` when it ends. The app drops `speech`
+while its own "Off" is selected or while it is recording. A Home card whose event is speaking shows a small speaker glyph.
+
+**Voice setting.** `settings` (and `hello.settings`) gains:
+```json
+"voice": {"speak": "all" | "urgent" | "off", "available": true, "voice_id": "..."}
+```
+`available: false` = no ElevenLabs key on the Mac (the app greys the row out and says "Add an ElevenLabs key on the Mac to
+turn this on."). A missing `voice` = engine without voice. The app changes it with
+`{"type": "command", "name": "voice", "args": {"speak": "all" | "urgent" | "off"}}` (Settings: "Every buzz" /
+"Urgent only" / "Off"); the engine acks and rebroadcasts `settings`.
+
+**Talk to Spidey** (voice -> new trigger). App -> engine, after a press-and-hold of up to 15 s (AAC m4a, 16 kHz mono):
+```json
+{"type": "voice.command", "id": "3f9a1c2e", "audio_b64": "<base64 m4a>", "format": "m4a"}
+```
+`id` is optional; the engine echoes it. The engine acks (`{"type": "ack", "for": "voice.command", "ok": false, "error": ...}`
+when it refuses, e.g. voice unavailable) and then broadcasts:
+```jsonc
+{"type": "voice.draft", "id": "3f9a1c2e", "ok": true, "transcript": "buzz me if a dog comes near me",
+ "summary": "Buzz me when a dog comes near me, only if I haven't noticed it.",
+ "rule": { /* a full rule, same shape as rules.upsert's rule */ }}
+{"type": "voice.draft", "id": "3f9a1c2e", "ok": false, "error": "didn't catch that (empty transcript)", "transcript": ""}
+```
+Nothing is saved yet: the app shows the summary and sends the usual `rules.upsert` only when the user taps
+"Add Spidey trigger" ("Edit" opens the trigger wizard pre-filled from `rule`). The app ignores a `voice.draft` whose `id`
+is not its own, and gives up after 20 s.
+
+**Hearing.** The `neon` source stats (`status.source` and the device card) gain `"listening": bool` and
+`"last_heard": string | null` (the glasses' microphone). The app's Debug Neon card shows `hearing: "…"` while listening,
+`not listening` when false, and nothing when absent.

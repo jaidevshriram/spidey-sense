@@ -19,6 +19,7 @@ targets:
         UIAppFonts: [PlusJakartaSans.ttf]   # from SpideySense/Fonts/ (copied flat into the bundle); headings (SIL OFL 1.1, Tokotype); see Theme.swift Typo
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSLocalNetworkUsageDescription: Connects to the Spidey Sense engine on your Mac
+        NSMicrophoneUsageDescription: "Spidey listens while you hold the button, to set up a new trigger."
         NSBonjourServices: [_spidey._tcp]
         SpideyMacHost: 127.0.0.1   # replaced at build time by scripts/stamp_mac_ip.sh
         NSAppTransportSecurity:

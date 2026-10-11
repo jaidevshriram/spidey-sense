@@ -20,6 +20,7 @@ import yaml
 from . import heart as H
 from . import rules as R
 from . import trace as T
+from . import voice as V
 from .detectors import make_detector
 from .gaze_cache import GazeCache
 from .types import Detection
@@ -48,6 +49,9 @@ def load_config(path: str | Path = ROOT / "configs" / "config.yaml") -> dict:
         src["paths"] = [rel(p) for p in src["paths"]]
     if det.get("env_file"):
         det["env_file"] = rel(det["env_file"])
+    vc = cfg.get("voice") or {}
+    if vc.get("env_file"):
+        vc["env_file"] = rel(vc["env_file"])
     cfg["_config_path"] = str(path)
     return cfg
 
@@ -109,6 +113,15 @@ class Controller:
         self.radar_log = None                # the engine's JSONL log (set by run), shared with the radar thread
         self._log_lock = threading.Lock()
         self.trace_sub_ts = 0.0              # last trace.subscribe {on: true} from an app (stream while < 5 s old)
+        self.voice_cfg = cfg.get("voice") or {}
+        self.speak = self.voice_cfg.get("speak", "urgent")
+        if self.speak not in V.SPEAK_MODES:
+            self.speak = "urgent"
+        self.voice: V.VoiceOut | None = None   # ElevenLabs speech out (cfg voice.enabled + ELEVENLABS_API_KEY)
+        self.eleven: V.ElevenLabs | None = None
+        self.anthropic_client = None             # draft_trigger's client (None: made on first use; tests inject)
+        if self.voice_cfg.get("enabled"):
+            self.start_voice()
         # One source of truth: the triggers file. Seeded once (config rules, else defaults); after that
         # config `rules:` are ignored and the file (edited live by the app) wins.
         seed = cfg.get("rules_seed")          # optional: a triggers file to copy when rules_path is missing
@@ -160,7 +173,79 @@ class Controller:
             return {"type": "rules.list", "rules": [r.to_dict() for r in self.rules]}
 
     def settings_msg(self) -> dict:
-        return {"type": "settings", "quiet": self.quiet, "intensity": self.intensity}
+        return {"type": "settings", "quiet": self.quiet, "intensity": self.intensity, "voice": self.voice_info()}
+
+    # ---- voice (ElevenLabs) ---------------------------------------------------------------
+    def start_voice(self) -> None:
+        try:
+            self.eleven = V.make_client(self.voice_cfg)
+            self.voice = V.VoiceOut(self.eleven, self._broadcast, speak=self.speak,
+                                    max_age_s=float(self.voice_cfg.get("max_age_s", 4.0)))
+        except Exception as e:
+            print(f"voice: could not start ({type(e).__name__}: {e}); continuing without voice", flush=True)
+            self.voice = self.eleven = None
+            return
+        print(f"voice: {'on' if self.eleven.available else 'unavailable (no ELEVENLABS_API_KEY)'}, "
+              f"speak={self.speak}, voice_id={self.eleven.voice_id}", flush=True)
+
+    def _broadcast(self, msg: dict) -> None:
+        if self.server:
+            self.server.broadcast(msg)
+
+    def voice_info(self) -> dict:
+        return {"speak": self.speak, "available": bool(self.eleven and self.eleven.available),
+                "voice_id": (self.eleven.voice_id if self.eleven else
+                             self.voice_cfg.get("voice_id") or V.DEFAULT_VOICE_ID)}
+
+    def on_voice_command(self, msg: dict) -> dict:
+        """Spoken request (base64 audio) -> STT -> trigger draft, off the socket thread. Replies with an ack now;
+        the result is broadcast as voice.draft (with the request's id echoed)."""
+        ack = {"type": "ack", "for": "voice.command", "id": msg.get("id")}
+        if not (self.eleven and self.eleven.available):
+            return {**ack, "ok": False, "error": "voice unavailable (voice.enabled off or no ELEVENLABS_API_KEY)"}
+        fmt = str(msg.get("format") or "m4a").lower().lstrip(".")
+        if fmt not in V.AUDIO_TYPES:
+            return {**ack, "ok": False, "error": f"unsupported format {fmt!r}"}
+        try:
+            audio = base64.b64decode(msg.get("audio_b64") or "", validate=True)
+        except (ValueError, TypeError):
+            return {**ack, "ok": False, "error": "audio_b64 is not valid base64"}
+        if not audio:
+            return {**ack, "ok": False, "error": "no audio"}
+        if len(audio) > 20 * 1024 * 1024:
+            return {**ack, "ok": False, "error": "audio too large (max 20 MB)"}
+        threading.Thread(target=self._voice_draft, args=(audio, fmt, msg.get("id")), name="voice-draft",
+                         daemon=True).start()
+        return {**ack, "ok": True, "bytes": len(audio)}
+
+    def _voice_draft(self, audio: bytes, fmt: str, req_id=None) -> dict:
+        out = {"type": "voice.draft", "id": req_id, "ok": False, "transcript": ""}
+        t0 = time.perf_counter()
+        try:
+            res = self.eleven.stt(audio, f"request.{fmt}", tag_events=False,
+                                  language_code=self.voice_cfg.get("language_code"))
+            out["stt_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+            transcript = str(res.get("text") or "").strip()
+            out["transcript"] = transcript
+            if not transcript:
+                out["error"] = "didn't catch that (empty transcript)"
+            else:
+                with self.lock:
+                    ids = [r.id for r in self.rules]
+                d = V.draft_trigger(transcript, client=self.anthropic_client,
+                                    model=self.voice_cfg.get("draft_model", V.DRAFT_MODEL), existing_ids=ids)
+                if isinstance(d, str):
+                    out["error"] = d
+                else:
+                    out.update(ok=True, summary=d["summary"], rule=d["rule"], draft_ms=d.get("ms"))
+        except Exception as e:
+            out["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+        print(f"voice: draft {'ok' if out['ok'] else 'failed'} transcript={out.get('transcript')!r} "
+              f"{out.get('summary') or out.get('error')}", flush=True)
+        self._broadcast(out)
+        if out["ok"] and self.voice and self.speak != "off" and self.voice_cfg.get("speak_drafts", True):
+            self.voice.say(out["summary"], event_id=None, kind="draft")
+        return out
 
     def devices(self) -> list[dict]:
         now = time.time()
@@ -239,7 +324,7 @@ class Controller:
                "fps": fps, "gaze_hz": gaze_hz, "worn": None, "battery": None, "delay_ms": None}
         try:
             out.update({k: v for k, v in (self.source.stats() if self.source else {}).items() if k in
-                        ("worn", "battery", "delay_ms", "mode")})
+                        ("worn", "battery", "delay_ms", "mode", "walking", "cadence_spm", "turning", "listening", "last_heard", "hearing_detail")})
         except Exception as e:
             out["error"] = f"{type(e).__name__}: {e}"
         if self.source_type != "neon":
@@ -316,6 +401,8 @@ class Controller:
                         if thumb:
                             ev["thumb"] = thumb
                     self.server.publish(ev)
+                if self.voice is not None:
+                    self.voice.offer(ev)       # non-blocking: speech is synthesized on the voice thread
         return out
 
     # ---- heart rate (Oura) -----------------------------------------------------------------
@@ -480,6 +567,18 @@ class Controller:
             self.vision_off = not bool(args.get("on", self.vision_off))
             ack["detail"] = f"haiku {'off' if self.vision_off else 'on'}"
             self.broadcast_status()
+        elif name == "voice":
+            speak = args.get("speak")
+            if speak not in V.SPEAK_MODES:
+                return {**ack, "ok": False, "error": f"speak must be one of {list(V.SPEAK_MODES)}"}
+            self.speak = speak
+            if self.voice:
+                self.voice.speak = speak
+            info = self.voice_info()
+            ack["detail"] = f"speak {speak}" + ("" if info["available"] else " (voice unavailable)")
+            ack["voice"] = info
+            if self.server:
+                self.server.broadcast(self.settings_msg())
         elif name == "quiet":
             self.quiet = bool(args.get("on", not self.quiet))
             ack["detail"] = f"quiet {'on' if self.quiet else 'off'}"
@@ -499,6 +598,7 @@ class Controller:
         server.on("feedback", self.on_feedback)
         server.on("command", self.on_command)
         server.on("trace.subscribe", self.on_trace_subscribe)
+        server.on("voice.command", self.on_voice_command)
         server.add_periodic(5.0, self.device_status)
         server.add_periodic(2.0, self.status_msg)
         if self.haptics:
@@ -617,6 +717,9 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                      rules_path=ROOT / cfg.get("rules_file", "triggers.json"),
                      feedback_path=ROOT / cfg.get("feedback_log", "logs/feedback.jsonl"))
     ctl.detector, ctl.source = detector, source
+    hearing = getattr(source, "hearing", None)            # Neon mic -> ElevenLabs STT -> "Heard (last 5 s)" in the Haiku call
+    if hearing is not None and hasattr(detector, "context_fn"):
+        detector.context_fn = lambda: hearing.recent(time.time(), 5.0)
     ctl.vision_off = os.environ.get("HAIKU_OFF") == "1"   # start with Haiku paused (network tests)
     ctl.push_triggers()
     every = cfg.get("detect_every_s", 0)  # throttle slow detectors (e.g. a VLM)
@@ -825,6 +928,8 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
             except Exception:
                 pass
         ctl.radar_log = None
+        if ctl.voice is not None:
+            ctl.voice.close()
         if tracer:
             tracer.close()
         sink.close()

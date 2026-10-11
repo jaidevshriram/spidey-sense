@@ -17,7 +17,13 @@ struct DevicesView: View {
         }
         // v3: `status.source` / `status.radar` (2 s) are fresher than the device cards (5 s); prefer them.
         if let st = stream.engineStatus {
-            if let src = st.source, let i = list.firstIndex(where: { $0.id == "neon" }) { list[i].source = src }
+            if var src = st.source, let i = list.firstIndex(where: { $0.id == "neon" }) {
+                // v3.5 hearing may only be on the card's stats: keep it when `status.source` lacks it.
+                if src.listening == nil, let card = list[i].source {
+                    src.listening = card.listening; src.lastHeard = card.lastHeard
+                }
+                list[i].source = src
+            }
             if let r = st.radar {
                 if let i = list.firstIndex(where: { $0.id == "radar" }) {
                     list[i].radar = r
@@ -90,6 +96,13 @@ struct DeviceCard: View {
                     Label(m, systemImage: device.source?.walking == true ? "figure.walk" : "figure.stand")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
+                // v3.5: the glasses' microphone ("hearing"); hidden on engines that don't send it.
+                if let listening = device.source?.listening {
+                    Label(listening ? hearingText(device.source?.lastHeard) : "not listening",
+                          systemImage: listening ? "ear" : "ear.trianglebadge.exclamationmark")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.tail)
+                }
                 if let r = device.radar { RadarDetail(radar: r, now: now) }
                 if let h = device.heart { HeartDetail(heart: h, now: now, lastSeen: device.lastSeen) }
                 if let l = device.link, l.transport != nil {
@@ -148,6 +161,12 @@ struct DeviceCard: View {
         default: "sensor"
         }
     }
+    /// "hearing: “is that a dog”" (one line; the Label truncates it).
+    private func hearingText(_ last: String?) -> String {
+        guard let last else { return "listening (nothing heard yet)" }
+        return "hearing: \u{201C}\(last)\u{201D}"
+    }
+
     private var statusLabel: String {
         switch device.status {
         case "coming_soon": "Coming soon"

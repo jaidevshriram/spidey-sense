@@ -1,6 +1,6 @@
 """One-time Oura login (OAuth2) for the cloud heart-rate source, if personal access tokens aren't available.
 
-    1. https://cloud.ouraring.com/oauth/applications -> new app, redirect URI http://localhost:8099/callback
+    1. https://developer.ouraring.com/applications -> new app, redirect URI http://localhost:8099/callback
     2. put OURA_CLIENT_ID=... and OURA_CLIENT_SECRET=... in the repo-root .env
     3. python3 tools/oura_oauth.py      -> opens the Oura login in your browser; you log in and approve
 The token is saved 0600 to ~/.config/spidey/oura_token.json (outside the repo) and refreshed automatically.
@@ -20,6 +20,7 @@ from spidey import heart as H  # noqa: E402
 
 PORT, REDIRECT = 8099, "http://localhost:8099/callback"
 SCOPES = "heartrate personal daily"
+AUTHORIZE = "https://developer.ouraring.com/authorize"   # new developer portal (cloud.ouraring.com is deprecated)
 
 
 def main():
@@ -63,7 +64,7 @@ def main():
 
     srv = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    url = "https://cloud.ouraring.com/oauth/authorize?" + urllib.parse.urlencode(
+    url = AUTHORIZE + "?" + urllib.parse.urlencode(
         {"response_type": "code", "client_id": cid, "redirect_uri": REDIRECT, "scope": SCOPES, "state": state})
     print(f"Opening the Oura login. If it doesn't open, visit:\n{url}")
     webbrowser.open(url)

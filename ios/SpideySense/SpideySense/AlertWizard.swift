@@ -29,6 +29,10 @@ struct AlertDraft {
     var hrPct: Double = 20
     var hrSustain: Double = 8
     var original: SenseRule?
+    /// A new trigger started from a full rule (a suggestion, or one Spidey drafted from your voice): the fields the
+    /// wizard doesn't show (`when`, unmodelled `if` keys, trend) carry over. Ignored when editing (`original`).
+    var seed: SenseRule?
+    private var base: SenseRule? { original ?? seed }
 
     var recommendedFeel: String {
         switch kind {
@@ -141,7 +145,7 @@ struct AlertDraft {
             let base = id; var n = 2
             while existingIDs.contains(id) { id = "\(base)_\(n)"; n += 1 }
         }
-        var r = original ?? SenseRule(id: id, name: finalName)
+        var r = base ?? SenseRule(id: id, name: finalName)
         r.id = id; r.name = finalName; r.kind = "custom"
         r.enabled = original?.enabled ?? true
         r.feel = effectiveFeel
@@ -153,19 +157,19 @@ struct AlertDraft {
         case .heart:
             r.source = SenseSource.heartRate.rawValue; r.when = .any; r.describe = nil
             r.cond = RuleCondition(minDeltaBpm: hrDelta, minDeltaPct: hrPct, sustainS: hrSustain)
-                .preserving(original?.cond)
+                .preserving(base?.cond)
             r.gazeMode = nil; r.noticeMemoryS = nil; r.temporal = nil; r.trend = nil
         case .radar:
             r.source = SenseSource.radar.rawValue; r.when = .any; r.describe = nil
             r.cond = RuleCondition(unseen: true, maxDistanceM: (maxDistance * 10).rounded() / 10,
                                    minSpeedMps: (minSpeed * 100).rounded() / 100)
-                .preserving(original?.cond)
+                .preserving(base?.cond)
             r.gazeMode = GazeMode.unseen.rawValue; r.noticeMemoryS = nil; r.temporal = false; r.trend = nil
         case .camera:
             r.source = SenseSource.neon.rawValue
             r.describe = trimmedDescribe
-            var c = (original?.isCustom == true && original?.senseSource == .neon ? original!.cond : RuleCondition())
-                .preserving(original?.cond)
+            var c = (base?.isCustom == true && base?.senseSource == .neon ? base!.cond : RuleCondition())
+                .preserving(base?.cond)
             c.unseen = gaze == .unseen; c.minUrgency = minUrgency
             // Off = omit the key (older engines never saw it), unless the trigger already had it.
             c.onlyWhileWalking = walkingOnly ? true : (c.onlyWhileWalking == nil ? nil : false)
@@ -174,7 +178,7 @@ struct AlertDraft {
             r.gazeMode = gaze.rawValue
             r.noticeMemoryS = gaze == .unseen ? noticeMemory : nil
             r.temporal = temporal
-            r.trend = temporal ? (original?.trend ?? TrendConfig()) : nil   // defaults: 3 ticks, medium
+            r.trend = temporal ? (base?.trend ?? TrendConfig()) : nil   // defaults: 3 ticks, medium
         }
         return r
     }
@@ -271,7 +275,7 @@ struct AlertWizard: View {
         if let original {
             draft = AlertDraft.from(original); step = .summary
         } else if let template {
-            draft = AlertDraft.from(template); draft.original = nil; draft.nameEdited = false
+            draft = AlertDraft.from(template); draft.original = nil; draft.seed = template; draft.nameEdited = false
             draft.name = template.name; draft.nameEdited = true
             step = .summary
         }

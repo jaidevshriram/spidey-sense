@@ -7,6 +7,7 @@ source:
   mode: realtime              # Neon -> Companion phone -> Wi-Fi -> this Mac (wireless)
   # host: 192.168.1.23        # phone IP (Companion app). Unset: default gateway (Mac on the phone's
                               # hotspot -> phone = gateway), then mDNS discovery
+  hearing: true              # mic -> ElevenLabs STT (sound tags) -> "heard" line in the Haiku call; needs ELEVENLABS_API_KEY
 
 detector:
   type: vlm
@@ -40,3 +41,17 @@ log: logs/neon_events.jsonl
 server:
   enabled: true
   port: 8765
+
+voice:                          # ElevenLabs: speak fired events + "add a trigger by voice" (needs ELEVENLABS_API_KEY in .env)
+  enabled: true                 # no key -> settings.voice.available: false, nothing else changes
+  speak: urgent                 # all | urgent (feel == urgent only) | off; the app changes it live (command "voice")
+  voice_id: JBFqnCBsd6RMkjVDRZzb
+  tts_model: eleven_flash_v2_5
+  stt_model: scribe_v2
+  language_code: en             # STT hint: short clips otherwise get odd language guesses; remove for auto-detect
+  output_format: mp3_22050_32
+  voice_settings: {stability: 0.5, similarity_boost: 0.75, speed: 1.1}
+  max_age_s: 4.0                # drop a line not ready within this (stale speech is worse than none)
+  speak_drafts: true            # read a voice-drafted trigger's summary back
+  draft_model: claude-haiku-5-5
+  env_file: ../../.env          # repo-root .env (relative to this file)

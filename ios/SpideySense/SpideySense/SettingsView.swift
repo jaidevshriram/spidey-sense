@@ -40,6 +40,8 @@ struct SettingsView: View {
                     }
                     .softCard()
 
+                    VoiceSettingsCard(stream: stream)
+
                     VStack(spacing: 0) {
                         Toggle(isOn: Binding(get: { stream.settings.quiet },
                                              set: { on in withSpring { stream.command(.quiet(on)) } })) {
@@ -83,7 +85,12 @@ struct SettingsView: View {
             .background(Theme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .statusBarBackdrop()
-            .onAppear { intensity = stream.settings.intensity }
+            .onAppear {
+                intensity = stream.settings.intensity
+                // Screenshot hooks: `-voiceDemo YES` (voice available) / `-voiceDemo YES -voiceUnavailable YES`.
+                let d = UserDefaults.standard
+                if VoiceDemo.active { stream.applyVoiceDemo(available: !d.bool(forKey: "voiceUnavailable")) }
+            }
             .onChange(of: stream.settings.intensity) { _, v in intensity = v }
         }
     }

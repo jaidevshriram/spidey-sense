@@ -147,7 +147,7 @@ class NeonSource(GazeFrameSource):
     APP_DIR = Path(__file__).resolve().parents[2] / "neon"
 
     def __init__(self, mode: str = "realtime", host: str | None = None, app_dir: str | None = None,
-                 max_frame_age_ms: float = 600, keep_every: int = 30):
+                 max_frame_age_ms: float = 600, keep_every: int = 30, hearing: bool | dict = True):
         app = Path(app_dir).expanduser() if app_dir else self.APP_DIR
         sys.path.insert(0, str(app))
         from neon_app import open_source  # lazy: only needed with real hardware
@@ -171,6 +171,18 @@ class NeonSource(GazeFrameSource):
         if mode == "realtime" and getattr(self._src, "device", None) is not None:
             import threading
             threading.Thread(target=self._imu_loop, name="neon-imu", daemon=True).start()
+        # hearing (realtime only): mic audio -> ElevenLabs STT -> "heard in the last few s" for the Haiku call.
+        # hearing: true/false, or a dict of Hearing kwargs (window_s, hop_s, min_rms, language_code, ...)
+        from .hearing import Hearing
+        hcfg = dict(hearing) if isinstance(hearing, dict) else {"enabled": bool(hearing)}
+        if mode != "realtime" or getattr(self._src, "device", None) is None:
+            hcfg["enabled"] = False
+        self.hearing = Hearing(**hcfg)
+        if self.hearing.enabled:
+            import threading
+            threading.Thread(target=self._audio_loop, name="neon-audio", daemon=True).start()
+        elif hcfg.get("enabled", True) and mode == "realtime":
+            print(f"[neon] {self.hearing.detail}", flush=True)
 
     def _imu_loop(self) -> None:
         dev, off = self._src.device, float(getattr(self._src, "clock_offset_s", 0.0))
@@ -194,6 +206,38 @@ class NeonSource(GazeFrameSource):
             if n == 1:
                 print("[neon] IMU streaming (walking detection on)", flush=True)
 
+    def _audio_loop(self) -> None:
+        """Neon mic (AAC, fltp mono 8 kHz) -> 16 kHz mono int16 -> Hearing. The simple API keeps only the newest
+        frame, so this loop does nothing slow: resample + hand over; STT runs on Hearing's own pool."""
+        from .hearing import Resampler16k
+        dev, off = self._src.device, float(getattr(self._src, "clock_offset_s", 0.0))
+        to16k = Resampler16k()
+        n = 0
+        while True:
+            try:
+                a = dev.receive_audio_frame(timeout_seconds=3)
+            except Exception as e:          # mic disabled in the Companion app, link lost, ...
+                if self.hearing.audio_error is None:
+                    print(f"[neon] microphone unavailable ({type(e).__name__}: {e}); hearing = off", flush=True)
+                self.hearing.audio_error = f"{type(e).__name__}: {e}"
+                time.sleep(2)
+                continue
+            if a is None:
+                if n == 0 and self.hearing.audio_error is None:
+                    self.hearing.audio_error = "no audio frames (is the microphone on in the Companion app?)"
+                    print("[neon] no microphone audio yet (enable the microphone in the Companion app)", flush=True)
+                continue
+            try:
+                pcm = to16k(a.av_frame)
+            except Exception as e:
+                self.hearing.audio_error = f"decode: {type(e).__name__}: {e}"
+                continue
+            self.hearing.feed(a.timestamp_unix_seconds + off, pcm)
+            n += 1
+            if n == 1:
+                self.hearing.audio_error = None
+                print(f"[neon] microphone streaming ({a.av_frame.sample_rate} Hz -> 16 kHz; hearing on)", flush=True)
+
     def motion(self) -> dict:
         return self.walk.state(time.time())
 
@@ -201,6 +245,8 @@ class NeonSource(GazeFrameSource):
         """worn / battery / delay_ms for the app's status message. Battery comes from the Companion's
         status updates (realtime mode only); read at most every 10 s."""
         out = {"mode": self.mode, "worn": self._worn, "delay_ms": self._delay_ms, **self.motion()}
+        h = self.hearing.status()
+        out.update(listening=h["listening"], last_heard=h["last_heard"], hearing_detail=h["detail"])
         dev = getattr(self._src, "device", None)
         if dev is not None:
             checked, pct = self._battery
@@ -253,6 +299,7 @@ class NeonSource(GazeFrameSource):
             yield Frame(ts=ts, image=s.frame, gaze_xy=gaze, gaze_norm=False)
 
     def close(self) -> None:
+        self.hearing.close()
         self._src.close()
 
 

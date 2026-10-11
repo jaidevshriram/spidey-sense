@@ -253,6 +253,7 @@ class VLMDetector(Detector):
         self._last_delivered = [0.0, 0.0]   # newest frame_ts delivered per stage: [early, full]
         self.trace = False                  # engine sets True: keep the exact JPEGs + prompt on Detection.trace
         self.on_stale = None                # engine callback(det): a full result dropped as stale (for the tracer)
+        self.context_fn = None              # engine: () -> str | None, e.g. what the mic heard; appended to user_text
         self._call_id = 0
 
     # ---- request building ---------------------------------------------------------------
@@ -271,11 +272,28 @@ class VLMDetector(Detector):
             blocks[0]["cache_control"] = {"type": "ephemeral"}
         return blocks
 
-    def user_text(self, trig) -> str:
+    HEARD_NOTE = ("A custom trigger may also match on what was heard (speech or sounds from the wearer's "
+                  "microphone, last few seconds). For a match that rests on sound alone, set \"bbox\": null and "
+                  "\"x\": null.")
+
+    def context(self) -> str | None:
+        """Extra per-call context from self.context_fn (the engine sets it, e.g. Hearing.recent); never raises."""
+        if self.context_fn is None:
+            return None
+        try:
+            c = self.context_fn()
+        except Exception:
+            return None
+        return (c.strip() or None) if isinstance(c, str) else None
+
+    def user_text(self, trig, context: str | None = None) -> str:
         if not trig:
             return "Custom triggers: none."
-        return "Custom triggers:\n" + "\n".join(f'- id "{t[0]}"{" (temporal)" if len(t) > 2 and t[2] else ""}: '
+        text = "Custom triggers:\n" + "\n".join(f'- id "{t[0]}"{" (temporal)" if len(t) > 2 and t[2] else ""}: '
                                                 f'{t[1].strip()}' for t in trig)
+        if context:     # only with custom triggers: the heard line is evidence for them, not for the hazard
+            text += "\n" + context + "\n" + self.HEARD_NOTE
+        return text
 
     def _small(self, frame: Frame) -> Frame:
         """A max_side copy of the frame (gaze rescaled) for the temporal ring buffer."""
@@ -346,7 +364,7 @@ class VLMDetector(Detector):
                              "src_wh": [f.image.shape[1], f.image.shape[0]]})
             content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                         "data": base64.b64encode(jpg).decode()}})
-        user_text = self.user_text(trig)
+        user_text = self.user_text(trig, self.context())
         content.append({"type": "text", "text": user_text})
         tr = {"call_id": call_id, "t_submit": t_submit or t_start, "t_start": t_start, "images": sent,
               "user_text": user_text, "triggers": [list(t) for t in trig], "model": self.model} if self.trace else None
@@ -455,7 +473,7 @@ class VLMDetector(Detector):
                             {"frame_ts": frame.ts, "call_id": call_id, "error": f"{type(e).__name__}: {e}"},
                             frame=frame,
                             trace={"call_id": call_id, "t_submit": t_submit or t0, "t_start": t0,
-                                   "t_full": time.time(), "images": [], "user_text": self.user_text(self.triggers),
+                                   "t_full": time.time(), "images": [], "user_text": self.user_text(self.triggers, self.context()),
                                    "triggers": [list(t) for t in self.triggers], "model": self.model}
                             if self.trace else None)
         finally:
