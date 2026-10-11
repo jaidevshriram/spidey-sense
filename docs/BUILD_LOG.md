@@ -288,3 +288,23 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - Tested in a simulator against a console-sink engine on :8799 (temp triggers.json): add (Knife nearby template),
   toggle off/on, edit to pulse 60% pink, delete, built-in delete confirm, reset → blindspot + heads_up; each change landed in triggers.json.
   Screenshots: ios/screenshots/senses-triggers.png, add-trigger.png, log-why.png (sample data).
+
+### 18:10 PT Neon working wirelessly via the Companion phone's hotspot
+- Setup: glasses on the Companion phone (Neon Companion app), phone Wi-Fi hotspot on, Mac joined it. Mac 192.168.16.204,
+  gateway = phone 192.168.16.142. `curl http://192.168.16.142:8080/api/status` answers; `discover_one_device` (mDNS, 10 s)
+  finds nothing over the Android hotspot. Module serial 223798, battery 13–16%. Real-time API 1.9.0.
+- `neon_app.connect_companion()`: IP → default gateway (if `/api/status` answers) → mDNS. Used by `NeonRealtimeSource`
+  (engine, `source.host` still wins) and `neon/check_companion.py` (also `scripts/neon_check.sh`).
+- Clock: Time Echo offset Mac−phone ≈ +70–82 ms (round trip 36–64 ms). `NeonRealtimeSource` returns `Sample.t` on the
+  Mac clock; `NeonSource` now stamps `Frame.ts` with that capture time (receive-time fallback if the age is absurd), so
+  `e2e_ms` = glasses capture → cue. Prints `[neon] capture->Mac age` every 150 frames.
+- `python3 neon/check_companion.py` (4 runs): 1600x1200, 9–18 fps matched scene+gaze, gaze-only 130 Hz, worn 100% when
+  on the head; capture→Mac median 110–150 ms, p90 137 ms–1 s (hotspot spikes; first ~2 s after connect is a backlog,
+  now skipped). Eye state per sample: pupil Ø ~5 mm L/R, eyelid aperture ~7–8 mm. Visible H.264 block artifacts in
+  frames (packet loss on the hotspot). `--view --seconds 12 --save logs/neon_frame.jpg`: gaze circle sits on the
+  laptop screen the wearer was looking at.
+- Engine (temp copy of config.neon.yaml: port 8793, temp rules file, console sink, log logs/neon_test.jsonl, 25 s):
+  ~20 fps through the source, 16 Haiku calls, Haiku 1.1 s median / 1.35 s p90 (first call 2.2 s), e2e 1.6 s median /
+  1.9 s p90. Haiku on the real scene: hazard none every time ("Office scene with laptops, drinks, and a person seated;
+  nothing moving toward the wearer or dangerous."). Internet works through the hotspot.
+- Gotcha: the test engine also advertises `_spidey._tcp` over Bonjour while it runs.

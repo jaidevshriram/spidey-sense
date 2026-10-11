@@ -65,7 +65,10 @@ Only one program can hold the El Jefe Bluetooth link at a time. Our El Jefe is *
 venue advertise as DataFeel1E/3A/7E/32/36, and the code only connects on an exact name match.
 
 **Neon (wireless, via the Companion phone).** Glasses plug into the Companion phone; the phone streams scene
-video + gaze over Wi-Fi to the Mac (Pupil Labs Real-time API). Phone and Mac must be on the same Wi-Fi.
+video + gaze over Wi-Fi to the Mac (Pupil Labs Real-time API, port 8080). Phone and Mac must be on the same Wi-Fi,
+or (easiest, no venue Wi-Fi needed) **turn on the phone's hotspot and join it from the Mac**: the phone is then the
+Mac's default gateway, and the check script + engine connect to it automatically (mDNS discovery does NOT work over
+the Android hotspot; the gateway IP does). The Mac keeps internet through the hotspot (phone's mobile data) for Haiku.
 
 ```bash
 ./scripts/neon_check.sh                 # finds the phone, prints battery / fps / gaze rate / delay, opens a live view
@@ -74,7 +77,9 @@ video + gaze over Wi-Fi to the Mac (Pupil Labs Real-time API). Phone and Mac mus
 python3 backend/run.py --config backend/configs/config.neon.yaml              # real Neon + Haiku, console output
 python3 backend/run.py --config backend/configs/config.neon.yaml --sink datafeel-ble   # + buzz (Terminal.app)
 ```
-If discovery fails, set `source.host: <phone ip>` in `config.neon.yaml`.
+Connection order: `source.host` / the IP argument → the Mac's default gateway (hotspot) → mDNS. On venue Wi-Fi where
+discovery is blocked, set `source.host: <phone ip>` in `config.neon.yaml`. Frame timestamps are converted to the
+Mac's clock with Pupil Labs Time Echo, so `e2e_ms` in the log is glasses capture → cue.
 
 **iOS app: zero setup.** Open `ios/SpideySense/SpideySense.xcodeproj` (or `cd ios/SpideySense && xcodegen generate`)
 and press Run. Phone and Mac on the same Wi-Fi is the only assumption:
@@ -96,6 +101,8 @@ chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
 | Dot trigger over Bluetooth, `dots/fastfire` (buzz starts after 2 writes) | **117 ms median**, 150 ms worst |
 | Bluetooth connect + discover | 4–5 s |
 | Claude Haiku 5.5 per frame (512 px) | 0.9–1.0 s median, 1.2–1.4 s p90 |
+| Neon over phone hotspot: scene+gaze | 1600x1200 @ 9–18 fps, gaze-only 130 Hz; capture→Mac 110–150 ms median (spikes to ~1 s p90) |
+| Neon + Haiku through the engine (hotspot) | Haiku 1.1 s median, e2e (glasses capture → cue) 1.6 s median, 1.9 s p90 |
 | El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |
 | Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
 

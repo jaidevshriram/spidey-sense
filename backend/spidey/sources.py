@@ -119,8 +119,9 @@ class NeonSource(GazeFrameSource):
     """Pupil Labs Neon, via neon/neon_app in this repo (copied from neon-gaze-app).
 
     mode="capture":  headset on USB -> Pupil Capture on this Mac (Pupil Remote, port 50020)
-    mode="realtime": Neon Companion phone over Wi-Fi (pupil_labs.realtime_api.simple:
-                     discover_one_device + receive_matched_scene_video_frame_and_gaze)
+    mode="realtime": Neon Companion phone over Wi-Fi (pupil_labs.realtime_api.simple):
+                     host (phone IP) -> else the default gateway (phone hotspot) -> else mDNS.
+                     Frame.ts = phone capture time on the Mac clock, so e2e_ms includes Wi-Fi.
     Both return gaze in scene-camera pixels, origin top-left.
     Needs in this venv: pyzmq + msgpack (capture) or
     pupil-labs-realtime-api (realtime).
@@ -133,17 +134,31 @@ class NeonSource(GazeFrameSource):
         sys.path.insert(0, str(app))
         from neon_app import open_source  # lazy: only needed with real hardware
 
+        self.mode = mode
         self._src = open_source(mode, host=host, with_video=True)
+        self._ages: list[float] = []   # realtime: phone capture -> Mac receive, ms
 
     def frames(self) -> Iterator[Frame]:
         while True:
             s = self._src.next()
             if s.frame is None:
                 continue
+            now = time.time()
             gaze = None if (not s.worn or math.isnan(s.x)) else (s.x, s.y)
-            # Use local receive time so end-to-end latency is on one clock
-            # (Capture's s.t is Pupil time, not unix time).
-            yield Frame(ts=time.time(), image=s.frame, gaze_xy=gaze, gaze_norm=False)
+            if self.mode == "realtime":
+                # s.t = the phone's capture time already converted to this Mac's clock (Time Echo
+                # offset), so ts -> cue (e2e_ms) includes the Wi-Fi hop. Guard against a bad offset.
+                age = (now - s.t) * 1000
+                self._ages.append(age)
+                if len(self._ages) >= 150:
+                    a = sorted(self._ages)
+                    print(f"[neon] {len(a)} frames · capture->Mac age median {a[len(a) // 2]:.0f} ms, "
+                          f"p90 {a[int(len(a) * .9)]:.0f} ms · gaze {'ok' if gaze else 'NOT WORN'}", flush=True)
+                    self._ages.clear()
+                ts = s.t if 0 <= age < 5000 else now
+            else:
+                ts = now   # Capture's s.t is Pupil time, not unix time: use local receive time
+            yield Frame(ts=ts, image=s.frame, gaze_xy=gaze, gaze_norm=False)
 
     def close(self) -> None:
         self._src.close()

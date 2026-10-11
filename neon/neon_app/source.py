@@ -168,29 +168,95 @@ class CaptureSource:
 
 
 # ---------------------------------------------------------------------------
-# Neon Companion phone (Real-time API) — kept for later
+# Neon Companion phone (Real-time API)
 # ---------------------------------------------------------------------------
-class NeonRealtimeSource:
-    def __init__(self, address: str | None = None, port: int = 8080, with_video: bool = True):
-        from pupil_labs.realtime_api.simple import Device, discover_one_device
+def default_gateway() -> str | None:
+    """This machine's default gateway IP. On a phone hotspot that IS the Companion phone."""
+    import subprocess
+    import sys
 
-        if address:
-            self.device = Device(address=address, port=port)
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True,
+                                 timeout=3).stdout
+            for line in out.splitlines():
+                if line.strip().startswith("gateway:"):
+                    return line.split(":", 1)[1].strip()
         else:
-            print("Searching for a Neon Companion on the local network (10s) ...")
-            self.device = discover_one_device(max_search_duration_seconds=10)
-            if self.device is None:
-                raise RuntimeError("No Neon Companion found on this network. Try --ip.")
+            out = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True,
+                                 timeout=3).stdout.split()
+            return out[out.index("via") + 1] if "via" in out else None
+    except Exception:
+        return None
+    return None
+
+
+def companion_answers(ip: str, port: int = 8080, timeout: float = 2.0) -> bool:
+    """True if a Neon Companion Real-time API answers at ip:port (GET /api/status)."""
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://{ip}:{port}/api/status", timeout=timeout) as r:
+            return json.load(r).get("message") == "Success"
+    except Exception:
+        return False
+
+
+def connect_companion(address: str | None = None, port: int = 8080, search_s: float = 10):
+    """Device for the Companion phone: given IP, else mDNS discovery, else the default gateway
+    (phone hotspot: mDNS usually doesn't work there, but the phone is the gateway)."""
+    from pupil_labs.realtime_api.simple import Device, discover_one_device
+
+    if address:
+        return Device(address=address, port=port)
+    gw = default_gateway()
+    if gw and companion_answers(gw, port):   # hotspot case: instant, skip the mDNS wait
+        print(f"Neon Companion answered at the default gateway {gw} (phone hotspot)")
+        return Device(address=gw, port=port)
+    print(f"Searching for a Neon Companion on the local network ({search_s:.0f}s) ...")
+    dev = discover_one_device(max_search_duration_seconds=search_s)
+    if dev is None:
+        raise RuntimeError("No Neon Companion found: not at the default gateway"
+                           f" ({gw}) and not via mDNS. Set source.host / pass the phone's IP.")
+    return dev
+
+
+class NeonRealtimeSource:
+    """Scene + gaze from the Neon Companion phone. Sample.t is the phone's frame timestamp
+    converted to THIS machine's clock (Time Echo offset), so now - t = true frame age."""
+
+    def __init__(self, address: str | None = None, port: int = 8080, with_video: bool = True):
+        self.device = connect_companion(address, port)
         self.with_video = with_video
-        print(f"Connected: {self.device.phone_name} @ {self.device.phone_ip}")
+        self.clock_offset_s = 0.0   # mac_time - phone_time
+        try:
+            est = self.device.estimate_time_offset(number_of_measurements=20)
+            if est is not None:
+                self.clock_offset_s = est.time_offset_ms.median / 1000
+        except Exception as e:  # older Companion app: fall back to NTP-synced clocks
+            print(f"(time offset estimation failed: {e}; assuming synced clocks)")
+        print(f"Connected: {self.device.phone_name} @ {self.device.phone_ip} · battery "
+              f"{self.device.battery_level_percent}% · module {self.device.module_serial or 'NOT CONNECTED'}"
+              f" · clock offset {self.clock_offset_s * 1000:+.0f} ms")
 
     def next(self) -> Sample:
-        if self.with_video:
-            item = self.device.receive_matched_scene_video_frame_and_gaze()
-            g = item.gaze
-            return Sample(item.frame.bgr_pixels, g.x, g.y, 1.0, g.worn, g.timestamp_unix_seconds)
-        g = self.device.receive_gaze_datum()
-        return Sample(None, g.x, g.y, 1.0, g.worn, g.timestamp_unix_seconds)
+        while True:
+            if self.with_video:
+                item = self.device.receive_matched_scene_video_frame_and_gaze(timeout_seconds=5)
+                if item is None:   # the first frame can take >5 s while the RTSP streams start
+                    self._waits = getattr(self, "_waits", 0) + 1
+                    if self._waits > 1:
+                        print("(no scene video from the Companion: glasses plugged in, app open?)")
+                    continue
+                self._waits = 0
+                g = item.gaze
+                t = item.frame.timestamp_unix_seconds + self.clock_offset_s
+                return Sample(item.frame.bgr_pixels, g.x, g.y, 1.0, bool(g.worn), t)
+            g = self.device.receive_gaze_datum(timeout_seconds=5)
+            if g is None:
+                continue
+            return Sample(None, g.x, g.y, 1.0, bool(g.worn), g.timestamp_unix_seconds + self.clock_offset_s)
 
     def start_recording(self) -> str:
         return self.device.recording_start()

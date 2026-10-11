@@ -5,7 +5,8 @@
 source:
   type: neon
   mode: realtime              # Neon -> Companion phone -> Wi-Fi -> this Mac (wireless)
-  # host: 192.168.1.23        # phone IP if auto-discovery fails (shown in the Companion app)
+  # host: 192.168.1.23        # phone IP (Companion app). Unset: default gateway (Mac on the phone's
+                              # hotspot -> phone = gateway), then mDNS discovery
 
 detector:
   type: vlm
