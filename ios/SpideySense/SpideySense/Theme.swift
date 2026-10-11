@@ -288,6 +288,8 @@ enum Plain {
         case "person", "people", "human", "someone": return "Someone"
         case "bike", "bicycle", "cyclist": return "A cyclist"
         case "car", "vehicle": return "A car"
+        case "debris", "rubble", "water", "smoke", "fire", "stairs", "trash":   // no article
+            return h.prefix(1).uppercased() + h.dropFirst()
         default:
             let article = "aeiou".contains(h.first!) ? "An" : "A"
             return "\(article) \(h)"

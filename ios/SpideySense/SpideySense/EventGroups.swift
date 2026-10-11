@@ -61,11 +61,28 @@ extension HapticEvent {
                                  "it", "this", "that", "wearer", "your", "you", "no", "yes", "match", "matched", "clearly"]
         func noun(_ text: String?) -> String? {
             guard let h = text?.lowercased(), !h.isEmpty, h != "none" else { return nil }
-            return h.split(whereSeparator: { !$0.isLetter }).map(String.init).first { !skip.contains($0) && $0.count > 1 }
+            let words = h.split(whereSeparator: { !$0.isLetter }).map(String.init)
+            // a real object noun first ("Blurred hand/arm…" -> "hand", "Cardboard box…" -> "box"); adjectives never
+            if let w = words.first(where: { Self.objectNouns.contains($0) }) { return w }
+            if let w = words.first(where: { $0.hasSuffix("s") && Self.objectNouns.contains(String($0.dropLast())) }) {
+                return String(w.dropLast())
+            }
+            return nil      // unknown wording: the headline falls back to the trigger's own name
         }
         if isRadar || isHeart { return nil }
         return noun(hazard) ?? noun(cleanWhy)
     }
+
+    static let objectNouns: Set<String> = [
+        "person", "man", "woman", "child", "kid", "boy", "girl", "baby", "people", "someone", "stranger", "friend",
+        "fist", "hand", "arm", "foot", "leg", "punch", "face",
+        "lion", "tiger", "cat", "dog", "horse", "bird", "snake", "bear", "deer", "animal", "puppy",
+        "car", "bike", "bicycle", "cyclist", "scooter", "motorcycle", "bus", "truck", "vehicle", "train", "skateboard",
+        "box", "chair", "table", "desk", "bag", "backpack", "suitcase", "cable", "cord", "wire", "pole", "pillar",
+        "post", "wall", "door", "step", "stairs", "curb", "stage", "platform", "bench", "sofa", "couch", "plant",
+        "bottle", "cup", "mug", "drink", "glass", "laptop", "phone", "ball", "knife", "scissors", "kettle", "pan",
+        "stove", "fire", "smoke", "water", "lake", "river", "pool", "puddle", "edge", "hole", "obstacle", "object",
+        "sign", "light", "trash", "bin", "debris", "rubble", "tool", "ladder", "cart", "stroller", "trolley"]
 
     /// Haiku's reason without the engine's appended diagnostics ("…; gaze in box 0.21 s [gaze cache …]").
     var cleanWhy: String? {

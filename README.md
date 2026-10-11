@@ -7,8 +7,10 @@ Hackathon project (Interface Hackathon, Oct 2026).
 
 ![Demo screen: the glasses' view with gaze, Haiku's boxes and the buzz banner, next to the live-mirrored phone app](docs/screenshots/demo-screen.jpg)
 
-*Demo screen (`/demo`): left, what the glasses see (coral ring = your gaze, boxes = what Haiku found, banner = the buzz
-with Haiku's reason and frame→buzz time); right, the phone app mirrored live over Wi-Fi.*
+*A real moment from a test walk (not a simulation): reading my phone while walking, the glasses' gaze (coral ring) is on
+the phone, Haiku boxes the cardboard box ahead, and the Dot buzzes 1.7 s after the frame ("Something in my way",
+amber). Left: the demo screen's glasses view (`/demo`). Right: the app showing that run's real buzzes ("A table. You
+hadn't looked at it.").*
 
 ## What it does
 
@@ -35,7 +37,7 @@ with Haiku's reason and frame→buzz time); right, the phone app mirrored live o
 
 | Home | Why it buzzed | Talk to Spidey | Spidey heard you |
 |:-:|:-:|:-:|:-:|
-| <img src="docs/screenshots/redesign/home-fresh-event.png" width="200"> | <img src="docs/screenshots/redesign/event-detail.png" width="200"> | <img src="docs/screenshots/redesign/talk-button.png" width="200"> | <img src="docs/screenshots/redesign/voice-draft-sheet.png" width="200"> |
+| <img src="docs/screenshots/redesign/home-real-events.png" width="200"> | <img src="docs/screenshots/redesign/event-detail.png" width="200"> | <img src="docs/screenshots/redesign/talk-button.png" width="200"> | <img src="docs/screenshots/redesign/voice-draft-sheet.png" width="200"> |
 | **Repeats collapse** | **New trigger: what** | **When to warn you** | **Only while walking** |
 | <img src="docs/screenshots/redesign/home-collapsed-x3.png" width="200"> | <img src="docs/screenshots/redesign/wizard-1-what.png" width="200"> | <img src="docs/screenshots/redesign/wizard-2-when.png" width="200"> | <img src="docs/screenshots/redesign/wizard-walking.png" width="200"> |
 | **Summary** | **Spidey Sense improved!** | **Spidey's voice** | **Debug: live decisions** |

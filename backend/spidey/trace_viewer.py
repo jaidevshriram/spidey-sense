@@ -421,6 +421,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const rgbcss=c=>c&&c.length===3?`rgb(${c[0]},${c[1]},${c[2]})`:"#ff5a5f";
 let busy=false, lastFrame=0, lastPhone=0, shownFire=0;
+const RUN=new URLSearchParams(location.search).get("run"), RQ=RUN?"?run="+encodeURIComponent(RUN):"";   // replay a saved run dir
 function pill(id,on,text,warn){const p=$(id);p.classList.toggle("on",!!on);p.classList.toggle("warn",!!warn);p.lastElementChild.textContent=text;}
 function fit(st){ // size the scene box to the image aspect inside the stage
   const wh=st.img_wh||[1600,1200], S=$("stage").getBoundingClientRect(), a=wh[0]/wh[1];
@@ -430,7 +431,7 @@ function fit(st){ // size the scene box to the image aspect inside the stage
 async function tick(){
   if(busy) return; busy=true;
   try{
-    const st=await (await fetch("/api/live")).json();
+    const st=await (await fetch("/api/live"+RQ)).json();
     if(!st||!st.frame_ts){ $("wait").style.display="flex"; return; }
     $("wait").style.display=st.stale_s>3?"flex":"none";
     if(st.stale_s>3) $("wait").innerHTML="Waiting for the glasses…<br><span style='font-size:15px'>no video for "+st.stale_s+" s</span>";
@@ -475,7 +476,7 @@ async function tick(){
 }
 async function phone(){
   try{
-    const p=await (await fetch("/api/phone")).json();
+    const p=await (await fetch("/api/phone"+RQ)).json();
     const live=p.on&&p.age_s<3;
     $("phonewait").style.display=live?"none":"flex";
     if(live&&p.ts!==lastPhone){ lastPhone=p.ts; const im=new Image(); im.onload=()=>{$("phoneimg").src=im.src;};

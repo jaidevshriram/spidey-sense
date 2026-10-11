@@ -198,7 +198,7 @@ struct SensesStrip: View {
         guard let card = stream.devices.first(where: { $0.id == "oura" }),
               !["off", "coming_soon"].contains(card.status) else { return nil }
         let h = card.heart
-        guard let bpm = h?.lastBpm else { return card.status == "connected" ? .waiting : nil }
+        guard let bpm = h?.lastBpm else { return nil }    // no real reading yet: show nothing (no "waiting for a sync")
         let delta = h?.medianBpm.map { Int((bpm - $0).rounded()) }
         let readAt = h?.lastReadingTs.map { Date(timeIntervalSince1970: $0) }
         return .reading(bpm: Int(bpm.rounded()), delta: delta, readAt: readAt,
