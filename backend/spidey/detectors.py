@@ -258,7 +258,7 @@ class VLMDetector(Detector):
               "user_text": user_text, "triggers": [list(t) for t in trig], "model": self.model} if self.trace else None
         n_temporal = sum(1 for t in trig if t[2])
         kwargs = dict(model=self.model, max_tokens=self.max_tokens + 90 * len(trig) + 40 * n_temporal,
-                      thinking={"type": "disabled"}, output_config={"effort": "low"},
+                      thinking={"type": "disabled"} if "haiku" in self.model else {"type": "between_tools"}, output_config={"effort": "low"},
                       system=self.system_blocks(), messages=[{"role": "user", "content": content}])
         early_ms = None
         if self.stream:
