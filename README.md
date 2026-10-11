@@ -1,29 +1,71 @@
 # Spidey Sense
 
-A wearable "spidey sense": eye-tracking glasses see what's around you, an AI notices hazards **you haven't
-looked at**, and a haptic Dot on your body buzzes / glows / warms to tell you, hands-free.
+A wearable "spidey sense": eye-tracking glasses see what's around you, Claude notices what **you haven't looked at**,
+and a haptic Dot on your body taps you, with Spidey's voice in your ear saying why. Hands-free; set up by talking to it.
 
 Hackathon project (Interface Hackathon, Oct 2026).
+
+![Demo screen: the glasses' view with gaze, Haiku's boxes and the buzz banner, next to the live-mirrored phone app](docs/screenshots/demo-screen.jpg)
+
+*Demo screen (`/demo`): left, what the glasses see (coral ring = your gaze, boxes = what Haiku found, banner = the buzz
+with Haiku's reason and frame→buzz time); right, the phone app mirrored live over Wi-Fi.*
+
+## What it does
+
+- **Gaze-aware triggers in plain English.** "A lion I haven't noticed", "someone about to attack me", "something in my
+  way". Each trigger buzzes *only if you haven't noticed it*, *when you look at it*, or *always*. "Noticed" = your real
+  gaze rested on Haiku's box for ~0.2 s (a glance doesn't count); a 3 s notice memory keeps it quiet right after.
+- **~1 s from sight to touch.** One Claude Haiku call per tick (5 overlapping calls, a new frame every 0.25 s, streamed);
+  a gaze cache re-checks gaze against Haiku's boxes on every frame, so looking away fires in ~0.25 s.
+- **Over time, relative only.** Temporal triggers compare 3 labelled frames (closer / same / farther, touching) and a
+  trend layer (gap in body-heights, looming). Time to contact comes from how fast a box grows. No absolute distances.
+- **Haptics.** DataFeel Dot over Bluetooth (El Jefe hub): vibration patterns, RGB colour per trigger, thermal; 117 ms
+  median trigger; health checks, auto baseline, thermal safety.
+- **Voice (ElevenLabs).** Spidey says why it buzzed (eleven_flash_v2_5, 0.3–0.8 s), in your AirPods or the phone.
+  *Hold to tell Spidey*: say "warn me if a dog comes near me" → scribe_v2 → Haiku drafts the trigger → you confirm.
+- **Hearing.** The glasses' microphone → ElevenLabs speech-to-text with sound tags (horn, siren, shouting) → "Heard
+  (last 5 s): …" goes into the same Haiku call, so a trigger can use sight and sound. Still one detection path.
+- **Oura heart rate.** Your real ring via Oura's cloud API (OAuth): heart rate on Home and a "heart racing" trigger
+  (readings arrive minutes late; history never buzzes). Live BLE via `open_oura` is also built (needs re-pairing).
+- **Walking.** "Only while I'm walking" per trigger (Neon IMU step detection; unknown never blocks).
+- **iOS app** for everyone: what buzzed and why, collapsed repeats, step-by-step trigger wizard, voice, Debug tools.
+- **Traces for every call**: the exact images Haiku saw, prompt, reply, timings and why each trigger did or didn't fire.
+
+## The app
+
+| Home | Why it buzzed | Talk to Spidey | Spidey heard you |
+|:-:|:-:|:-:|:-:|
+| <img src="docs/screenshots/redesign/home-fresh-event.png" width="200"> | <img src="docs/screenshots/redesign/event-detail.png" width="200"> | <img src="docs/screenshots/redesign/talk-button.png" width="200"> | <img src="docs/screenshots/redesign/voice-draft-sheet.png" width="200"> |
+| **Repeats collapse** | **New trigger: what** | **When to warn you** | **Only while walking** |
+| <img src="docs/screenshots/redesign/home-collapsed-x3.png" width="200"> | <img src="docs/screenshots/redesign/wizard-1-what.png" width="200"> | <img src="docs/screenshots/redesign/wizard-2-when.png" width="200"> | <img src="docs/screenshots/redesign/wizard-walking.png" width="200"> |
+| **Summary** | **Spidey Sense improved!** | **Spidey's voice** | **Debug: live decisions** |
+| <img src="docs/screenshots/redesign/summary.png" width="200"> | <img src="docs/screenshots/redesign/success.png" width="200"> | <img src="docs/screenshots/redesign/voice-settings.png" width="200"> | <img src="docs/screenshots/redesign/debug-live-decisions.png" width="200"> |
+
+More (large text, iPhone SE, photo view, Oura on Home, a 34 s screen recording `flow.mp4`): `docs/screenshots/redesign/`.
 
 ## Architecture
 
 ```
- WORN ON YOU                                   ON THE TABLE (MacBook)                       YOUR PHONE
- ───────────                                   ──────────────────────                       ──────────
- Pupil Labs Neon ──USB-C── Companion phone ─Wi-Fi─▶ source   (backend/spidey/sources.py)
-   scene camera + gaze      (in your pocket)        │  Frame(image, gaze)
+ WORN ON YOU                                   ON THE TABLE (MacBook)                          YOUR PHONE
+ ───────────                                   ──────────────────────                          ──────────
+ Pupil Labs Neon ──USB-C── Companion phone ─Wi-Fi─▶ source   (sources.py: video, gaze, IMU, mic)
+   scene camera, gaze,      (5 GHz hotspot)         │  Frame(image, gaze) · walking · heard audio
+   IMU, microphone                                  │                       └─▶ hearing.py ─▶ ElevenLabs STT
+                                                    ▼                                        (sound tags)
+                                                  detector (detectors.py)  ◀── "Heard (last 5 s): …"
+                                                    │  ONE Claude Haiku call: hazard + every custom trigger
+                                                    ▼  (match, urgency, bbox, reason), streamed
+                                                  gaze cache + memory + rules (gaze_cache.py, rules.py)
+                                                    │  noticed? walking? time to contact? stale?
+ Oura ring ─▶ phone app ─▶ Oura cloud ─────────────▶ heart.py (heart racing)
                                                     ▼
-                                                  detector (backend/spidey/detectors.py)
-                                                    │  Claude Haiku: {hazard, x, seen_by_user, urgency}
-                                                    ▼
-                                                  rules    (backend/spidey/rules.py, rules.json)
-                                                    │  "unseen and urgency ≥ 0.6 → urgent"
-                                                    ▼
- DataFeel Dot ──chain── El Jefe ◀──Bluetooth LE─── sink     (backend/spidey/sinks.py → haptics/dots)
-   vibration · RGB light · thermal                  │
-                                                    └──WebSocket :8765──▶ iOS app (ios/SpideySense)
-                                                                          live "why it buzzed" log,
-                                                                          senses, devices, settings
+ DataFeel Dot ──chain── El Jefe ◀──Bluetooth LE─── sink (sinks.py → haptics/dots)
+   vibration · RGB · thermal                        │
+                                                    ├─▶ voice.py ─▶ ElevenLabs TTS ─▶ "speech" ─┐
+                                                    └──WebSocket :8765 (protocol.md) ◀──────────┴─▶ iOS app
+                                                       events, triggers, voice drafts, status      (ios/SpideySense)
+                                                       ◀── mirror.frame (app screen, ReplayKit)
+ Trace viewer :8096 (trace_viewer.py): /  call cards · /live  live scene · /demo  demo screen (scene + phone)
  Haptic Playground (backend/playground): web UI :8080 to try every Dot affordance by hand.
 ```
 
@@ -48,6 +90,10 @@ cd ~/Desktop/GIT-Projects/spidey-sense
 ./scripts/setup.sh               # uv venv on Python 3.12 + editable installs
 source .venv/bin/activate
 ./scripts/set_api_key.sh         # Anthropic key → .env (hidden input, gitignored)
+# optional, in the same .env (never committed):  ELEVENLABS_API_KEY=…  (voice + hearing)
+#                                                 OURA_CLIENT_ID=… OURA_CLIENT_SECRET=…  then: python3 tools/oura_oauth.py
+#   (Oura app at https://developer.ouraring.com/applications, redirect URI exactly http://localhost:8099/callback;
+#    the token is saved 0600 to ~/.config/spidey/oura_token.json and refreshed automatically)
 
 python3 backend/run.py --seconds 10                                           # fakes only, prints cues
 python3 backend/run.py --config backend/configs/config.vlm.yaml --seconds 21  # Haiku on test scenes
@@ -129,14 +175,16 @@ Tabs (light theme, Airbnb-style cards; headings in Plus Jakarta Sans):
   collapse: same trigger id + the same object (main noun of Haiku's `hazard`/`why`), each buzz within 60 s of the group's
   last one (rolling window). A photo button shows what the glasses saw (gaze dot + box); tap a card for the detail sheet
   (snapshot sequence, why it buzzed, buzz timeline, sensor, helpful / not needed feedback, "Technical details" = raw Haiku
-  output + event JSON). Offline it shows sample data, marked "SAMPLE".
-- **Spidey triggers**: friendly cards with on/off toggles (long-press: edit / delete), "Always on" built-ins, "Suggested"
-  templates. **+ New Spidey trigger** opens a one-question-per-screen wizard: what to watch for (picture tiles or your own
+  output + event JSON). A speaker glyph shows while Spidey is saying it. At the bottom, quiet context: Oura heart rate
+  ("72 bpm · from your Oura ring · 6 min ago"), glasses on, listening. Offline it shows sample data, marked "SAMPLE".
+- **Spidey triggers**: one list, active triggers first (yours before built-ins), on/off toggles (long-press: edit / delete),
+  "Suggested" templates (incl. "Heart racing" when Oura is connected), and **Hold to tell Spidey** (voice → draft → confirm). **+ New Spidey trigger** opens a one-question-per-screen wizard: what to watch for (picture tiles or your own
   words) → when to warn you (`gaze_mode`: only if you haven't noticed it / when you look at it / always, + notice memory)
   → wait to be sure? (`temporal`) → how it should feel (optional; recommended feel from the answers, "Try it" plays
   `haptic.preset` on the Dot + the phone) → summary sentence + name + "Advanced" (min urgency, cooldown, Dot, raw
   description / radar / heart thresholds) → "Spidey Sense improved!". It sends the same trigger JSON as before.
-- **Settings**: connection in plain words, buzz strength, quiet mode, test buzz, stop all, "Show Debug tab".
+- **Settings**: connection in plain words, buzz strength, **Spidey's voice** (every buzz / urgent only / off), quiet mode,
+  test buzz, stop all, "Show Debug tab", **Demo → Mirror screen to Mac**.
 - **Debug** (on by default): pause detection, Devices, Haptics & link check, Live decisions, raw event log, the technical
   trigger editor, and Engine / connection / About.
 Screenshots + a short screen recording: `docs/screenshots/redesign/` (`flow.mp4`). Launch-argument hooks for screenshots
@@ -158,6 +206,12 @@ are listed in the views' `onAppear`.
 | Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
 | Desk dry runs A–D (sim scene, scripted gaze, real Haiku, 512 px) | all pass; frame→fire 1.2–1.3 s (single image), 1.5–1.65 s (temporal, 3 images) |
 | World-sim A–D (3 reps, real Haiku, gaze cache) | all pass, 0 false alarms; **gaze lands → buzz 0.24 s** (cached boxes), new object → buzz ~1.5 s (Haiku) |
+| Neon over the phone hotspot on **5 GHz** | capture→Mac **~90 ms median, ~120 ms p90** (2.4 GHz: 0.5–3 s bursts) |
+| Haiku call through the phone's cellular uplink | 1.1–1.7 s median, slow tails 3–5 s (12.5 % packet loss measured); 5 overlapping calls hedge it |
+| Obstacle trigger, 56 hand-labelled live frames | Haiku v1 prompt **96 % recall**, 19 % false alarms (Sonnet: same recall, +0.7 s) — `vlm/prompt_ab_obstacles.md` |
+| Attack trigger, reworded for recall (replay of missed frames) | 0/14 → **14/14**, 0/8 false alarms |
+| ElevenLabs TTS (eleven_flash_v2_5) / STT (scribe_v2, 3 s window) | 0.3–0.8 s / 0.45–0.85 s |
+| Voice → drafted trigger (STT + Haiku) | ~2–3 s |
 | Radar frame → cue | ~29 ms median (radar-lab) + ~4 ms server→sense; + ~117 ms BLE buzz ≈ 0.15 s |
 
 ## Keeping this README current
@@ -175,13 +229,21 @@ in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CL
   alerts, feed protocol v2 and the Spidey adapter (`radar/adapter/`).
 - Desk test images from Wikimedia Commons; the lion is CC BY 2.0 by Kevin Pluck. Full list: `backend/desk_test/CREDITS.md`.
 - `bleak`, `minimalmodbus`, `pyserial`, `websockets`, FastAPI, OpenCV.
-- `open_oura` (MIT, github.com/Th0rgal/open_oura) for live Oura ring heart rate (`backend/spidey/heart.py`, setup in `docs/oura.md`).
+- **ElevenLabs** text-to-speech (eleven_flash_v2_5) and speech-to-text (scribe_v2) for Spidey's voice and hearing.
+- **Oura** API v2 (OAuth) for heart rate; `open_oura` (MIT, github.com/Th0rgal/open_oura) for the live-BLE option
+  (`backend/spidey/heart.py`, setup in `docs/oura.md`).
 - **Plus Jakarta Sans** (SIL OFL 1.1, Tokotype), the app's heading font: `ios/SpideySense/SpideySense/Fonts/` (with `OFL.txt`).
 
 ## Demo screen (Mac, full screen)
 
 `./scripts/traces.sh` (viewer on :8096) + the engine running → open **http://localhost:8096/demo** and go full screen.
-- Left 70 %: the Neon scene with the gaze dot + trail, Haiku's boxes, a banner on every buzz (trigger, reason, Dot colour,
-  frame→buzz time), pills for gaze / walking / hearing / Oura heart rate.
+- Left 70 %: the Neon scene with the gaze ring + trail, Haiku's boxes (amber = matched, Dot colour = buzzed), a banner on
+  every buzz (trigger, Haiku's reason, Dot colour, frame→buzz time) with a glow in the Dot's colour, "Heard: …" when the
+  mic catches something, pills for gaze / walking / hearing / Oura heart rate (each hidden when it has nothing real).
 - Right 30 %: the iPhone app, mirrored live over Wi-Fi: in the app, Settings → Demo → **Mirror screen to Mac**
-  (ReplayKit in-app capture; only Spidey Sense is shared; iOS asks once). Frames: ≤ 8 fps, 540 px wide JPEG.
+  (ReplayKit in-app capture; only Spidey Sense is shared; iOS asks once). ≤ 8 fps while the screen changes, 540 px JPEG.
+
+Demo-day checklist: Companion phone hotspot on **5 GHz**, Mac + iPhone joined to it (Android hotspots block Bonjour: set
+`ws://<mac ip>:8765` once in the app under Debug → Engine); El Jefe charged and **unplugged before** starting the engine;
+Companion app microphone on (for hearing); open the Oura app so the ring syncs; `HAIKU_OFF=1` starts with Haiku paused
+(the engine's `haiku` command switches it live).
