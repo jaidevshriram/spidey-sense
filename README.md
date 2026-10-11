@@ -27,7 +27,7 @@ with Haiku's reason and frame→buzz time); right, the phone app mirrored live o
   (last 5 s): …" goes into the same Haiku call, so a trigger can use sight and sound. Still one detection path.
 - **Oura heart rate.** Your real ring via Oura's cloud API (OAuth): heart rate on Home and a "heart racing" trigger
   (readings arrive minutes late; history never buzzes). Live BLE via `open_oura` is also built (needs re-pairing).
-- **Walking.** "Only while I'm walking" per trigger (Neon IMU step detection; unknown never blocks).
+- **Walking.** "Only while I'm walking" per trigger (Neon IMU step detection, tested on synthetic data; unknown never blocks). Note: with our Companion app version the IMU stream currently arrives as all zeros, so walking shows as unknown.
 - **iOS app** for everyone: what buzzed and why, collapsed repeats, step-by-step trigger wizard, voice, Debug tools.
 - **Traces for every call**: the exact images Haiku saw, prompt, reply, timings and why each trigger did or didn't fire.
 
