@@ -33,6 +33,24 @@ def lan_ip() -> str:
         s.close()
 
 
+def advertise_bonjour(port: int):
+    """Announce the WebSocket as _spidey._tcp so the iPhone app finds the Mac with zero setup."""
+    try:
+        from zeroconf import ServiceInfo, Zeroconf
+        host = socket.gethostname().split(".")[0]
+        ip = lan_ip()
+        info = ServiceInfo("_spidey._tcp.local.", f"Spidey Sense on {host}._spidey._tcp.local.",
+                           addresses=[socket.inet_aton(ip)], port=port,
+                           properties={"path": "/", "v": "1"}, server=f"{host}.local.")
+        zc = Zeroconf()
+        zc.register_service(info, allow_name_change=True)
+        print(f"Bonjour: advertising _spidey._tcp on {ip}:{port}")
+        return zc
+    except Exception as e:  # discovery is a convenience; never block the engine
+        print(f"Bonjour: not advertised ({type(e).__name__}: {e}); the app can still use a manual URL")
+        return None
+
+
 class EventServer:
     def __init__(self, host: str = "0.0.0.0", port: int = 8765, history: int = 50):
         self.host, self.port = host, port
@@ -44,7 +62,8 @@ class EventServer:
         self._ready = threading.Event()
         threading.Thread(target=self._run, daemon=True).start()
         self._ready.wait(5)
-        print(f"Event server: ws://{lan_ip()}:{port}  (set this URL in the phone app)")
+        print(f"Event server: ws://{lan_ip()}:{port}  (the app finds it automatically via Bonjour)")
+        self._zc = advertise_bonjour(port)
 
     # ---- engine-facing API -------------------------------------------------------------
     def on(self, msg_type: str, fn: Callable[[dict], dict | None]) -> None:
