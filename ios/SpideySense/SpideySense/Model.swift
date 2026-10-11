@@ -27,7 +27,9 @@ struct HapticEvent: Identifiable {
     let paused: Bool           // engine was paused: logged, nothing reached the Dot
     let trend: EventTrend?
     let heart: HeartReading?   // heart events: {bpm, median_bpm, delta_bpm, above_s}
-    let raw: [String: Any]
+    let callID: Int?           // camera events: the Haiku call that fired it (`call_id`, matches trace.id)
+    let haikuRaw: String?      // camera events: Haiku's raw reply text (`raw`)
+    let raw: [String: Any]     // the whole event dict, for the detail JSON
 
     init?(_ d: [String: Any]) {
         guard let id = (d["id"] as? NSNumber)?.intValue else { return nil }
@@ -60,8 +62,12 @@ struct HapticEvent: Identifiable {
         lookedAtSAgo = (d["looked_at_s_ago"] as? NSNumber)?.doubleValue
         paused = d["paused"] as? Bool ?? false
         trend = EventTrend(d["trend"] as? [String: Any])
+        callID = (d["call_id"] as? NSNumber)?.intValue
+        haikuRaw = (d["raw"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         var r = d
         r.removeValue(forKey: "type")
+        // Haiku's raw reply gets its own section in the detail sheet.
+        if haikuRaw != nil { r.removeValue(forKey: "raw") }
         // Keep the detail JSON readable: the image is shown above it.
         if let t = d["thumb"] as? String { r["thumb"] = "<base64 JPEG, \(t.count) chars>" }
         raw = r

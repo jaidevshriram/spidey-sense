@@ -78,36 +78,101 @@ class Rule:
         return seen_by_haiku if mode == "looking_at" else not seen_by_haiku
 
     def matches(self, d: Detection) -> bool:
+        return self.explain(d)[0]
+
+    def explain(self, d: Detection) -> tuple[bool, str]:
+        """(matches, why): the same decision as before, plus a plain-English reason when it doesn't match.
+        Cooldown, staleness and the live-gaze check are applied in `decide`."""
         if not self.enabled:
-            return False
+            return False, "disabled"
         if self.source not in VISION_SOURCES:
             # radar: check_radar(); heart_rate: check_heart(). TODO(stub): mac_metric / manual have no input stream yet;
             # their conditions (hr_band_bpm, value_gt, ...) are stored and round-tripped only.
-            return False
+            return False, f"not a camera trigger (source {self.source})"
         c = self.if_
         if self.kind == "custom":
+            if self.id not in d.triggers:
+                return False, "not in Haiku's reply"
             t = d.triggers.get(self.id) or {}
             if self.temporal:
                 # the trend layer decides (TriggerMemory), not one Haiku verdict
-                return bool(t.get("trend_fire")) and self._gaze_ok(bool(t.get("seen_by_user")), t)
+                if not t.get("trend_fire"):
+                    return False, "trend: " + (t.get("trend_why") or "no fire")
+                ok, why = self._gaze_why(bool(t.get("seen_by_user")), t)
+                return ok, ("trend fired, but " + why) if not ok else "trend fired"
             if not t.get("match"):
-                return False
-            if not self._gaze_ok(bool(t.get("seen_by_user")), t):
-                return False
+                return False, "no match"
+            ok, why = self._gaze_why(bool(t.get("seen_by_user")), t)
+            if not ok:
+                return False, "match, but " + why
             urgency = float(t.get("urgency") or 0.0)
         else:
             if d.hazard is None:
-                return False
+                return False, "no hazard"
             if self.when != "any" and d.hazard not in self.when:
-                return False
-            if not self._gaze_ok(d.seen_by_user, None):
-                return False
+                return False, f"hazard {d.hazard!r} not in {self.when}"
+            ok, why = self._gaze_why(d.seen_by_user, None)
+            if not ok:
+                return False, f"hazard {d.hazard!r}, but " + why
             urgency = d.urgency
-        return c.get("min_urgency", 0.0) <= urgency <= c.get("max_urgency", 1.0)
+        lo, hi = c.get("min_urgency", 0.0), c.get("max_urgency", 1.0)
+        if urgency < lo:
+            return False, f"urgency {urgency:.2f} < min {lo}"
+        if urgency > hi:
+            return False, f"urgency {urgency:.2f} > max {hi}"
+        return True, "match"
+
+    def _gaze_why(self, seen_by_haiku: bool, t: dict | None) -> tuple[bool, str]:
+        """_gaze_ok with the reason when it fails."""
+        ok = self._gaze_ok(seen_by_haiku, t)
+        if ok:
+            return True, ""
+        mode = self.effective_gaze_mode
+        if t is not None and "looked_at_s_ago" in t:
+            ago = t["looked_at_s_ago"]
+            if mode == "looking_at":
+                last = "gaze never in the box since it appeared" if ago is None else f"last in box {ago:.1f} s ago"
+                return False, f"looking_at needs gaze in box \u2264{LOOKING_AT_S} s; {last}"
+            return False, f"unseen: looked at it {ago:.1f} s ago (notice memory {self.notice_memory_s:g} s)"
+        if mode == "looking_at":
+            return False, "looking_at: Haiku says not seen (no box for the gaze check)"
+        return False, "unseen: Haiku says the red dot is on it (no box for the gaze check)"
+
+    def decide(self, d: Detection, now: float, ctx: dict | None = None) -> tuple[HapticEvent | None, dict]:
+        """Rule decision record for one detection: (event or None, {id, name, fired, matched, why, gaze_mode}).
+        ctx (engine): max_result_age_s (don't fire on results older than this, measured from frame capture) and
+        gaze_now ((ts, x, y) newest gaze sample, 0..1): looking_at triggers with a box also need the newest gaze
+        inside the box at decision time. Without ctx it behaves like check()."""
+        ctx = ctx or {}
+        ok, why = self.explain(d)
+        t = d.triggers.get(self.id) if self.kind == "custom" else None
+        matched = bool(d.hazard) if self.kind != "custom" else bool((t or {}).get("match") or (t or {}).get("trend_fire"))
+        if ok:
+            max_age = ctx.get("max_result_age_s")
+            frame_ts = d.raw.get("frame_ts")
+            if max_age and frame_ts and now - frame_ts > max_age:
+                ok, why = False, f"stale: result {now - frame_ts:.1f} s old (max {max_age:g} s)"
+        if ok and "gaze_now" in ctx and self.effective_gaze_mode == "looking_at" and t is not None \
+                and not self.temporal and t.get("bbox"):
+            g = ctx["gaze_now"]
+            if g is None:
+                ok, why = False, "gaze left the box (no gaze sample now)"
+            elif not in_box(g[1], g[2], t["bbox"]):
+                ok, why = False, f"gaze left the box (gaze now at {g[1]:.2f},{g[2]:.2f})"
+        if ok and now - self._last < self.cooldown_s:
+            ok, why = False, f"cooldown {self.cooldown_s - (now - self._last):.1f} s left"
+        rec = {"id": self.id, "name": self.name, "fired": ok, "matched": matched, "why": "fired" if ok else why,
+               "gaze_mode": self.effective_gaze_mode}
+        if t and t.get("reason"):
+            rec["haiku_reason"] = t["reason"]
+        if not ok:
+            return None, rec
+        return self._fire(d, now), rec
 
     def check(self, d: Detection, now: float) -> HapticEvent | None:
-        if not self.matches(d) or now - self._last < self.cooldown_s:
-            return None
+        return self.decide(d, now)[0]
+
+    def _fire(self, d: Detection, now: float) -> HapticEvent:
         self._last = now
         extra = {"gaze_mode": self.effective_gaze_mode}
         if self.kind == "custom":
@@ -251,6 +316,21 @@ def apply(rules: list[Rule], d: Detection, now: float) -> list[HapticEvent]:
     return [e for r in rules if r.enabled and (e := r.check(d, now))]
 
 
+def apply_explained(rules: list[Rule], d: Detection, now: float,
+                    ctx: dict | None = None) -> tuple[list[HapticEvent], list[dict]]:
+    """apply() + a decision record per enabled camera trigger ({id, name, fired, matched, why, gaze_mode})."""
+    events, decisions = [], []
+    for r in rules:
+        if not r.enabled:
+            continue
+        e, rec = r.decide(d, now, ctx)
+        if e is not None:
+            events.append(e)
+        if r.source in VISION_SOURCES:
+            decisions.append(rec)
+    return events, decisions
+
+
 def apply_radar(rules: list[Rule], target: dict, now: float) -> list[HapticEvent]:
     return [e for r in rules if r.enabled and r.source == "radar" and (e := r.check_radar(target, now))]
 
@@ -345,6 +425,10 @@ class TriggerMemory:
         while self.gaze and self.gaze[0][0] < frame.ts - GAZE_HISTORY_S:
             self.gaze.popleft()
 
+    def newest_gaze(self) -> tuple[float, float, float] | None:
+        """(ts, x, y) of the newest gaze sample (0..1), for the decision-time "gaze left the box" check."""
+        return self.gaze[-1] if self.gaze else None
+
     def fired(self, rule_id: str) -> None:
         """A temporal trigger actually fired: disarm it until the trend reverses (hysteresis)."""
         st = self.states.get(rule_id)
@@ -353,7 +437,9 @@ class TriggerMemory:
             st.fired_gap = st.ticks[-1].get("gap_s") if st.ticks else None
             st.shrink_streak = st.closer_streak = 0
 
-    def annotate(self, det: Detection, rules: list[Rule], now: float) -> None:
+    def annotate(self, det: Detection, rules: list[Rule], now: float, trace: dict | None = None) -> None:
+        """trace (optional, tracing only): filled per trigger id with the gaze samples used for the box check
+        and the trend state; it does not change any decision."""
         if det.raw.get("early"):
             return                      # early detections carry no custom triggers
         frame_ts = det.raw.get("frame_ts", now)
@@ -386,9 +472,26 @@ class TriggerMemory:
                 if hits:
                     st.noticed_ts = max(st.noticed_ts or 0.0, max(hits))
                 t["looked_at_s_ago"] = None if st.noticed_ts is None else round(max(0.0, now - st.noticed_ts), 2)
+                if trace is not None:
+                    win = [(ts, x, y) for ts, x, y in self.gaze if ts >= since]
+                    step = max(1, len(win) // 40)        # <= ~40 samples in the record
+                    trace[r.id] = {"boxes": boxes, "since": round(since - frame_ts, 2), "n_samples": len(win),
+                                   "n_inside": len(hits), "noticed_ts": st.noticed_ts,
+                                   "looked_at_s_ago": t["looked_at_s_ago"],
+                                   "samples": [[round(ts - frame_ts, 3), round(x, 3), round(y, 3),
+                                                any(in_box(x, y, b) for b in boxes)] for ts, x, y in win[::step]]}
+            elif trace is not None:
+                trace[r.id] = {"boxes": boxes, "present": present, "note": "no box: gaze not checked"
+                               if present else "not matched: gaze not checked"}
             # -- temporal trend -----------------------------------------------------------------
             if r.temporal:
                 self._trend(r, t, st, frame_ts, w, h)
+                if trace is not None:
+                    trace.setdefault(r.id, {})["trend_state"] = {
+                        "trend": t.get("trend"), "why": t.get("trend_why"), "armed": st.armed,
+                        "fired_gap": st.fired_gap, "shrink_streak": st.shrink_streak,
+                        "ticks": [{"dt": round(k["ts"] - frame_ts, 2), "gap": k["gap"], "gap_s": k["gap_s"],
+                                   "ordinal": k["ordinal"], "touching": k["touching"]} for k in st.ticks]}
 
     def _trend(self, r: Rule, t: dict, st: TriggerState, frame_ts: float, w: int, h: int) -> None:
         """Per tick: gap (body-heights, median of 3), loom, Haiku's ordinal. Fires (if armed) when
@@ -400,6 +503,7 @@ class TriggerMemory:
         sb, tb = t["subject_bbox"], t["target_bbox"]
         t["trend_fire"] = False
         if sb is None:
+            t["trend_why"] = "no subject box from Haiku"
             return
         prev = st.ticks[-1] if st.ticks else None
         if prev is not None:
@@ -438,9 +542,34 @@ class TriggerMemory:
                 and gap_s >= st.fired_gap * REARM_FACTOR + 0.2 and not touching:
             st.armed = True
         is_near = gap_s is None or gap_s <= near
-        fire = touching or (is_near and (shrinking or st.closer_streak >= n))
+        # veto (unless touching): the latest tick says the subject is moving away, by Haiku's ordinal or by a gap
+        # that grew by more than eps; noisy boxes can otherwise pass the shrink test while walking away
+        veto = None if touching else ("Haiku says farther" if ordinal == "farther"
+                                      else f"gap grew {prev_gap_s:.2f} -> {gap_s:.2f}" if growing else None)
+        fire = touching or (is_near and (shrinking or st.closer_streak >= n) and veto is None)
         t["trend_fire"] = bool(st.armed and fire)
+        t["trend_why"] = (f"veto: {veto}" if veto and is_near and (shrinking or st.closer_streak >= n)
+                          else _trend_why(st, fire, touching, is_near, near, gap_s, gaps, n, shrinking))
         last = list(st.ticks)[-3:]
         t["trend"] = {"gap": [None if k["gap_s"] is None else round(k["gap_s"], 2) for k in last],
                       "ordinal": [k["ordinal"] for k in last], "touching": touching, "loom": loom,
-                      "shrinking": shrinking, "closer_streak": st.closer_streak, "armed": st.armed}
+                      "shrinking": shrinking, "closer_streak": st.closer_streak, "armed": st.armed,
+                      **({"veto": veto} if veto else {})}
+
+
+def _trend_why(st: TriggerState, fire: bool, touching: bool, is_near: bool, near: float, gap_s, gaps, n: int,
+               shrinking: bool) -> str:
+    """Plain-English trend state for the trace ("why not"); never used for the decision itself."""
+    g = "?" if gap_s is None else f"{gap_s:.2f}"
+    if fire and not st.armed:
+        return (f"disarmed after firing (re-arms when the gap grows to "
+                f"{(st.fired_gap or 0) * REARM_FACTOR + 0.2:.2f}); gap {g}")
+    if fire:
+        return "touching" if touching else f"near (gap {g} \u2264 {near}) and closing"
+    if not is_near:
+        return f"too far: gap {g} > {near} body-heights"
+    if len(gaps) < n:
+        return f"near, but only {len(gaps)}/{n} ticks of gap history"
+    return (f"gap not shrinking (last gaps {[round(x, 2) for x in gaps]}), "
+            f"Haiku 'closer' streak {st.closer_streak}/{n}")
+

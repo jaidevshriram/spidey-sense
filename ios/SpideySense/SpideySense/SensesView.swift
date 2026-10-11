@@ -79,22 +79,30 @@ struct SensesView: View {
     @State private var confirmDelete: SenseRule?
     @State private var confirmReset = false
 
+    /// Offline, trigger changes can't reach the engine: toggles and edits are disabled (list stays visible).
+    private var offline: Bool { !stream.isLive }
+
     var body: some View {
         NavigationStack {
             List {
+                if offline {
+                    NotConnectedBanner()
+                        .listRowSeparator(.hidden)
+                }
                 if stream.rulesAreSample {
-                    SampleBanner(text: "Sample triggers: not synced with the Mac engine. Edits stay on this phone.")
+                    SampleBanner(text: "Sample triggers: not synced with the Mac engine.")
                         .listRowSeparator(.hidden)
                 }
                 ForEach(stream.rules) { r in
-                    SenseRow(rule: r, onToggle: { stream.setEnabled(r, $0) }, onTap: { editing = r })
-                        .swipeActions(edge: .trailing, allowsFullSwipe: r.isCustom) {
+                    SenseRow(rule: r, onToggle: { stream.setEnabled(r, $0) }, onTap: { editing = r }, locked: offline)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: r.isCustom && !offline) {
                             Button(role: r.isCustom ? .destructive : nil) {
                                 if r.isCustom { stream.deleteRule(id: r.id) } else { confirmDelete = r }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
                             .tint(.red)
+                            .disabled(offline)
                         }
                 }
             }
@@ -120,20 +128,22 @@ struct SensesView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .accessibilityLabel("Trigger options")
+                    .disabled(offline)
                     Button { creating = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("Add trigger")
+                        .disabled(offline)
                 }
             }
             .confirmationDialog("Delete the built-in trigger \"\(confirmDelete?.name ?? "")\"?",
                                 isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                                 titleVisibility: .visible, presenting: confirmDelete) { r in
-                Button("Delete \(r.name)", role: .destructive) { stream.deleteRule(id: r.id) }
+                Button("Delete \(r.name)", role: .destructive) { stream.deleteRule(id: r.id) }.disabled(offline)
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
                 Text("Reset to defaults brings it back.")
             }
             .confirmationDialog("Reset triggers to defaults?", isPresented: $confirmReset, titleVisibility: .visible) {
-                Button("Reset to defaults", role: .destructive) { stream.resetRules() }
+                Button("Reset to defaults", role: .destructive) { stream.resetRules() }.disabled(offline)
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Removes every custom trigger and restores the built-in ones on the Mac.")
@@ -146,12 +156,24 @@ struct SensesView: View {
                    let r = stream.rules.first(where: { $0.id == id }) { editing = r }
             }
             .sheet(item: $editing) { r in
-                SenseBuilder(original: r, existingIDs: Set(stream.rules.map(\.id))) { stream.upsert($0) }
+                SenseBuilder(original: r, existingIDs: Set(stream.rules.map(\.id)), stream: stream) { stream.upsert($0) }
             }
             .sheet(isPresented: $creating) {
-                SenseBuilder(original: nil, existingIDs: Set(stream.rules.map(\.id))) { stream.upsert($0) }
+                SenseBuilder(original: nil, existingIDs: Set(stream.rules.map(\.id)), stream: stream) { stream.upsert($0) }
             }
         }
+    }
+}
+
+/// Senses tab, while the WebSocket to the engine is down.
+struct NotConnectedBanner: View {
+    var body: some View {
+        Label("Not connected: changes won't reach the engine", systemImage: "wifi.slash")
+            .font(.footnote.bold())
+            .foregroundStyle(.red)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -170,6 +192,7 @@ struct SenseRow: View {
     let rule: SenseRule
     let onToggle: (Bool) -> Void
     var onTap: () -> Void = {}
+    var locked = false          // offline: the toggle can't reach the engine, so it's disabled
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -179,6 +202,7 @@ struct SenseRow: View {
                 .onTapGesture(perform: onTap)   // tap to edit; kept off the toggle so it doesn't steal its taps
                 .accessibilityAddTraits(.isButton)
             Toggle("Enabled", isOn: Binding(get: { rule.enabled }, set: onToggle)).labelsHidden()
+                .disabled(locked)
         }
         .opacity(rule.enabled ? 1 : 0.55)
         .padding(.vertical, 2)
@@ -302,6 +326,8 @@ struct SenseBuilder: View {
 
     let original: SenseRule?
     let existingIDs: Set<String>
+    /// When given, Save is disabled while it isn't live (the change couldn't reach the engine).
+    var stream: EventStream? = nil
     let onSave: (SenseRule) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -341,6 +367,7 @@ struct SenseBuilder: View {
     @State private var cooldown = 5.0
     @State private var enabled = true
 
+    private var live: Bool { stream?.isLive ?? true }
     private var feelKey: String { feel == .custom ? customFeel.trimmingCharacters(in: .whitespaces) : feel.rawValue }
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var trimmedDescribe: String { describe.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -370,13 +397,19 @@ struct SenseBuilder: View {
                 } footer: {
                     if let id = original?.id { Text("id: \(id)") }
                 }
+                if !live {
+                    Section {
+                        Label("Not connected: changes won't reach the engine", systemImage: "wifi.slash")
+                            .font(.footnote.bold()).foregroundStyle(.red)
+                    }
+                }
             }
             .navigationTitle(original == nil ? "Add trigger" : "Edit trigger")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(build()); dismiss() }.disabled(!canSave)
+                    Button("Save") { onSave(build()); dismiss() }.disabled(!canSave || !live)
                 }
             }
             .onAppear { if let original { load(original) } }

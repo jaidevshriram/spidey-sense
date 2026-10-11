@@ -45,6 +45,10 @@ final class EventStream {
     private(set) var lastFullPing: PingResult?                   // "Ping all" (flash: true)
     private(set) var ackLog: [AckEntry] = []                     // newest first, max 30
     private(set) var lastThermalAck: AckMessage?
+
+    // Log tab "Live decisions": one `trace` per Haiku call while subscribed, newest first.
+    private(set) var traces: [Trace] = []
+    private let maxTraces = 50
     private var pingSeq = 0
     private var flashPings = Set<Int>()
 
@@ -145,6 +149,12 @@ final class EventStream {
             }
         case "event":
             add(obj)
+        case "trace":
+            // Decoded leniently; a trace that still fails is dropped without touching anything else.
+            if let t = try? dec.decode(Trace.self, from: data) {
+                traces.insert(t, at: 0)
+                if traces.count > maxTraces { traces.removeLast(traces.count - maxTraces) }
+            }
         case "rules.list":
             if let m = try? dec.decode(RulesListMessage.self, from: data) { applyEcho(m.rules) }
         case "device.status":
@@ -215,7 +225,7 @@ final class EventStream {
 
     private func handleAck(_ a: AckMessage) {
         let kind = a.for ?? "?"
-        if kind == "haptic.subscribe" { return }   // every 2 s: not interesting
+        if kind == "haptic.subscribe" || kind == "trace.subscribe" { return }   // every 2 s: not interesting
         let what = [a.for, a.name].compactMap { $0 }.joined(separator: " ")
         lastAck = (a.ok ?? false) ? "\(what): \(a.detail ?? "ok")" : "\(what) failed: \(a.error ?? "?")"
         var note = a.ok == false ? a.error : a.detail
@@ -291,10 +301,12 @@ final class EventStream {
         return true
     }
 
-    /// Add or replace a rule. Optimistic local update; the engine answers with rules.list.
+    /// Add or replace a rule. Optimistic local update only once the message actually went out
+    /// (offline nothing changes, so a toggle can never flip on this phone without reaching the engine);
+    /// the engine answers with rules.list.
     func upsert(_ rule: SenseRule) {
+        guard sendRuleChange(RulesUpsert(rule: rule)) else { return }
         if let i = rules.firstIndex(where: { $0.id == rule.id }) { rules[i] = rule } else { rules.append(rule) }
-        send(RulesUpsert(rule: rule))
     }
 
     func setEnabled(_ rule: SenseRule, _ on: Bool) {
@@ -302,14 +314,25 @@ final class EventStream {
     }
 
     func deleteRule(id: String) {
+        guard sendRuleChange(RulesDelete(id: id)) else { return }
         rules.removeAll { $0.id == id }
-        send(RulesDelete(id: id))
     }
 
-    /// Restore the engine's default triggers. Offline: back to this phone's sample set.
+    /// Restore the engine's default triggers (the engine answers with rules.list). Offline: nothing changes.
     func resetRules() {
-        if rulesAreSample { rules = MockData.rules; lastAck = "sample triggers reset on this phone"; return }
-        send(RulesReset())   // the engine answers with rules.list
+        sendRuleChange(RulesReset())
+    }
+
+    /// Sends a rule change only while live; offline it is refused (and noted) so the UI never shows
+    /// a change the engine didn't get.
+    @discardableResult
+    private func sendRuleChange<T: Encodable>(_ msg: T) -> Bool {
+        guard isLive, send(msg) else {
+            lastAck = "not connected: trigger change not sent"
+            logSystem(.warning, "Not connected: trigger change not sent to the engine")
+            return false
+        }
+        return true
     }
 
     func feedback(_ e: HapticEvent, _ v: Verdict) {
@@ -332,6 +355,15 @@ final class EventStream {
         guard isLive else { return }
         send(HapticSubscribe(on: true))
     }
+
+    /// Live decisions: the engine streams `trace` while it got `on: true` within the last 5 s, so the
+    /// Log resends this every ~2 s; `on: false` stops it at once. Offline: nothing is sent.
+    func subscribeTrace(_ on: Bool) {
+        guard isLive else { return }
+        send(TraceSubscribe(on: on))
+    }
+
+    func clearTraces() { traces.removeAll() }
 
     /// `flash: false` = silent health check every 2 s; `flash: true` = "Ping all" (Dot flashes green).
     func ping(flash: Bool) {

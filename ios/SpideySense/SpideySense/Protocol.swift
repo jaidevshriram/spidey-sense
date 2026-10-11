@@ -1,14 +1,19 @@
 import Foundation
+import UIKit
 
 // Wire protocol between the app and the Mac engine. Keep in sync with docs/protocol.md
 // and spidey/server.py + spidey/engine.py (Controller).
 //
-// server -> app: hello{history, rules, devices, settings}, status{paused, source, radar, about} (v3), event{..., trigger?, trigger_name?, why?}, rules.list{rules},
+// server -> app: hello{history, rules, devices, settings}, status{paused, source, radar, about} (v3),
+//                event{..., trigger?, trigger_name?, why?, call_id?, raw?}, rules.list{rules},
 //                device.status{devices}, settings{quiet, intensity}, ack{for, ok, ms, ...}, error{error},
-//                haptic.telemetry{...}, link.pong{...}, system{ts, level, text}
+//                haptic.telemetry{...}, link.pong{...}, system{ts, level, text},
+//                trace{id, ts, t, hazard, urgency, reason, latency_ms, n_images, paused, stale, error, raw,
+//                      thumb?, near_miss?, decisions[{id, name, fired, matched, why, gaze_mode, haiku_reason}]}
+//                      (only while subscribed)
 // app -> server: rules.upsert{rule}, rules.delete{id}, rules.reset{}, feedback{event_id, ts, verdict},
 //                command{name, args}, haptic.subscribe/led/vibe.sequence/vibe.manual/preset/thermal/stop_all,
-//                link.ping{id, t_app, flash}
+//                link.ping{id, t_app, flash}, trace.subscribe{on} (resent every ~2 s; engine stops after 5 s)
 //
 // Events are still parsed loosely into `HapticEvent` (Model.swift) so the live log keeps working
 // with older engines and the test server.
@@ -633,6 +638,86 @@ struct SystemMessage: Decodable {
     var text: String?
 }
 
+/// `trace`: one per full Haiku call while the app is subscribed (`trace.subscribe`). Every field is
+/// optional and decoded leniently; a malformed decision is dropped rather than failing the trace.
+struct Trace: Decodable, Identifiable {
+    let uid = UUID()            // local identity (the engine's `id` can repeat after a restart)
+    var callID: Int?            // `id`: the Haiku call id (matches event.call_id)
+    var ts: Double?             // frame capture time (unix s)
+    var t: Double?              // result time (unix s)
+    var hazard: String?
+    var urgency: Double?
+    var reason: String?
+    var latencyMs: Double?
+    var nImages: Int?
+    var paused: Bool?
+    var stale: Bool?
+    var error: String?
+    var raw: String?            // Haiku's raw reply (≤2000 chars)
+    var thumb: UIImage?         // decoded `thumb` (base64 JPEG ~240 px, gaze dot + bbox drawn)
+    var nearMiss = false        // `near_miss`, else derived: a decision matched but didn't fire
+    var decisions: [TraceDecision] = []
+
+    var id: UUID { uid }
+    var date: Date { Date(timeIntervalSince1970: t ?? ts ?? Date().timeIntervalSince1970) }
+
+    enum CodingKeys: String, CodingKey {
+        case id, ts, t, hazard, urgency, reason, paused, stale, error, raw, decisions, thumb
+        case latencyMs = "latency_ms", nImages = "n_images", nearMiss = "near_miss"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        callID = c.lenient(Int.self, .id); ts = c.lenient(Double.self, .ts); t = c.lenient(Double.self, .t)
+        hazard = c.lenient(String.self, .hazard); urgency = c.lenient(Double.self, .urgency)
+        reason = c.lenient(String.self, .reason); latencyMs = c.lenient(Double.self, .latencyMs)
+        nImages = c.lenient(Int.self, .nImages); paused = c.lenient(Bool.self, .paused)
+        stale = c.lenient(Bool.self, .stale); error = c.lenient(String.self, .error)
+        raw = c.lenient(String.self, .raw)
+        decisions = (c.lenient([Lossy<TraceDecision>].self, .decisions) ?? []).compactMap(\.value)
+        if let b64 = c.lenient(String.self, .thumb), !b64.isEmpty,
+           let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) {
+            thumb = UIImage(data: data)
+        }
+        nearMiss = c.lenient(Bool.self, .nearMiss)
+            ?? decisions.contains { $0.matched == true && $0.fired != true }
+    }
+}
+
+/// One enabled camera trigger's verdict for a traced Haiku call.
+struct TraceDecision: Decodable, Identifiable {
+    let uid = UUID()
+    var triggerID: String?
+    var name: String?
+    var fired: Bool?
+    var matched: Bool?
+    var why: String?
+    var gazeMode: String?
+    var haikuReason: String?
+
+    var id: UUID { uid }
+    var label: String { name ?? triggerID ?? "?" }
+
+    enum CodingKeys: String, CodingKey {
+        case name, fired, matched, why
+        case triggerID = "id", gazeMode = "gaze_mode", haikuReason = "haiku_reason"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        triggerID = c.lenient(String.self, .triggerID); name = c.lenient(String.self, .name)
+        fired = c.lenient(Bool.self, .fired); matched = c.lenient(Bool.self, .matched)
+        why = c.lenient(String.self, .why); gazeMode = c.lenient(String.self, .gazeMode)
+        haikuReason = c.lenient(String.self, .haikuReason)
+    }
+}
+
+/// Decodes one array element, or nil if it is malformed, so one bad element can't sink the array.
+struct Lossy<T: Decodable>: Decodable {
+    var value: T?
+    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+}
+
 // MARK: - App -> server
 
 enum Verdict: String, Codable { case useful, noisy }
@@ -683,6 +768,8 @@ struct CommandMessage: Encodable {
 // MARK: - Haptics tab (app -> server). Each gets an `ack` with `for`, `ok`, `ms`.
 
 struct HapticSubscribe: Encodable { let type = "haptic.subscribe"; var on: Bool }
+/// Live decisions: engine streams `trace` while it got one of these within the last 5 s.
+struct TraceSubscribe: Encodable { let type = "trace.subscribe"; var on: Bool }
 
 struct HapticLED: Encodable {
     let type = "haptic.led"

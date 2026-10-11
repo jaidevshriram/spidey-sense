@@ -39,7 +39,7 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `radar/` | radar sense docs + calibration; `adapter/` = radar-lab's adapter + protocol v2 (reference) |
 | `ios/` | SwiftUI app: Log / Senses / Devices / Haptics / Settings (zero-config connect) |
 | `docs/` | `STATUS.md` (current state, one page), `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped), `deck/` (slides) |
-| `scripts/` | setup, API key, playground, Bluetooth test/latency |
+| `scripts/` | setup, API key, playground, Bluetooth test/latency, `traces.sh` (trace viewer :8096) |
 
 ## Quickstart
 
@@ -100,6 +100,18 @@ Mac's clock with Pupil Labs Time Echo, so `e2e_ms` in the log is glasses capture
 ./scripts/desk_test.sh prerun              # dry runs on simulated scenes + scripted gaze (real Haiku)
 ./scripts/desk_test.sh check               # offline engine checks
 ```
+**Traces: why did (or didn't) it fire?** Every engine run records each Haiku call to `backend/logs/runs/<time>-<config>/`
+(the exact JPEGs sent with the gaze dot, prompt, raw reply, timings, tokens, the gaze samples used, and per trigger
+fired / why-not; capped at 2000 calls / 500 MB, runs older than 2 days pruned; `trace: {enabled: false}` turns it off).
+```bash
+./scripts/traces.sh          # viewer: http://localhost:8096/ (calls as cards, filters) and http://localhost:8096/live (live scene, gaze, boxes)
+./scripts/traces.sh lan      # same, reachable from the phone / a second screen
+```
+The desk page posts which picture it shows to the viewer (`/api/truth`), so each card shows the ground truth at the frame and at
+decision time. In the app, Log → **Live decisions** streams the same per-call decisions (near misses with a thumbnail).
+Results older than `max_result_age_s` (2.5 s) never fire, and `looking_at` needs your gaze still in the box at decision time.
+Desk configs set `detector.treat_screens_as_real: true` (Haiku treats the monitor's lion as a real lion).
+
 "Seen" comes from your real gaze history overlapping the object's box (from Haiku), not from Haiku's guess. Over-time
 triggers keep only relative signals (the gap in body-heights, looming, closer/same/farther). See `docs/architecture.md`.
 
@@ -110,7 +122,7 @@ and press Run. Phone and Mac on the same Wi-Fi is the only assumption:
 - Pressing Run also starts the demo engine (fakes, console) if nothing is listening on 8765. Bluetooth runs still go via Terminal.
 - On a real iPhone: the team is preset (F9KC623A2R). Plug in once, pick the iPhone, Run, allow Local Network; tick "Connect via network" in Xcode → Devices for wireless installs. The phone must be on the same Wi-Fi as the Mac (at the venue: the Neon phone's hotspot).
 
-Tabs: **Log** (why each buzz fired + link-drop system rows) · **Senses** (rules) · **Devices** (live El Jefe health) ·
+Tabs: **Log** (why each buzz fired + link-drop system rows; "Live decisions": every Haiku call's per-trigger fired / why-not) · **Senses** (rules; locked with a banner while not connected) · **Devices** (live El Jefe health) ·
 **Haptics** (Link check: Phone→Mac / Mac→El Jefe / El Jefe→Dot with ms, Ping all; light, vibration, thermal with a live
 chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
 

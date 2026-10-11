@@ -36,6 +36,8 @@ class Detection:
                                                   #   temporal: subject_bbox, target_bbox, ordinal, touching}
                                                   # + engine annotations (looked_at_s_ago, trend, trend_fire)
     frame: Frame | None = field(default=None, repr=False)   # the frame the detector judged (thumbnails, gaze)
+    trace: dict | None = field(default=None, repr=False)    # VLM call details for the tracer (JPEGs sent, prompt,
+                                                            # timings); only filled while tracing is on
 
 
 @dataclass

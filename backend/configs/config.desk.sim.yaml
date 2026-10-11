@@ -31,6 +31,7 @@ detector:
   max_tokens: 200
   min_interval_s: 0.4
   env_file: ../../.env
+  treat_screens_as_real: true   # desk: the lion on the monitor counts as a real lion (prompt addendum)
 
 detect_every_s: 0
 rules_file: ../logs/desk_sim/triggers.desk.sim.json   # under repo-root logs/ (gitignored)

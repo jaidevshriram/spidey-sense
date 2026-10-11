@@ -21,6 +21,7 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 | Radar on radar-lab protocol v2 (debounced state, mount-aware `where`, 0.5 s fail-safe) | this push | approach → 1 fire; two_people walk-by ignored; ~4 ms server→sense |
 | App on Jaidev's iPhone ("Riptide") with a spider-web icon | this push | signed with his team; connects to the engine via Bonjour |
 | Haptic Playground (web) | | `./scripts/playground.sh` |
+| Per-call Haiku traces + viewer, app "Live decisions", staleness gate (2.5 s), decision-time gaze check, temporal "farther" veto, `treat_screens_as_real` for desk configs, Senses locked offline | uncommitted | `./scripts/traces.sh` → :8096 (+ `/live`); takes effect when the engine restarts |
 
 ## In progress
 - **Oura heart-rate sense** (stub + replay/fake backends + app template/card; live ring needs re-pairing at home, see `docs/oura.md` when it lands).

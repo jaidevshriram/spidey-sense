@@ -217,6 +217,82 @@ def test_trend():
     check("trend: fires once on the approach, near the water", len(fires) == 1 and fires[0] >= 0.4, fires)
 
 
+def test_trend_veto():
+    """Walking away near the water with noisy boxes: the latest tick's "farther" (or a growing gap) vetoes a fire;
+    fired temporal events carry the trend field."""
+    # (a gap that grew on the latest tick is also vetoed; the shrink test already fails on such a tick)
+    def run(ordinals, xs, label):
+        r = R.rule_from_dict({"id": "w", "name": "w", "describe": "person to water", "temporal": True,
+                              "gaze_mode": "any", "trend": {"ticks": 3, "sensitivity": "medium"}, "cooldown_s": 0})
+        mem = R.TriggerMemory()
+        img = np.zeros((1200, 1600, 3), np.uint8)
+        fires, whys = [], []
+        for i, (x, o) in enumerate(zip(xs, ordinals)):
+            f = Frame(3000 + i * 0.7, img, (0.1, 0.1), True)
+            mem.add_frame(f)
+            d = Detection(None, None, False, 0.0, raw={"frame_ts": f.ts}, frame=f, triggers={"w": {
+                "match": True, "urgency": .4, "subject_bbox": [x, 0.4, x + 0.05, 0.7],
+                "target_bbox": [0.7, 0.4, 1.0, 1.0], "ordinal": o, "touching": False}})
+            mem.annotate(d, [r], f.ts)
+            e = r.check(d, f.ts)
+            whys.append(d.triggers["w"].get("trend_why"))
+            if e:
+                fires.append(e)
+                mem.fired("w")
+        return fires, whys
+    # near the water (gap < 1 body-height), boxes shrink the gap, but Haiku says "farther" on the latest tick
+    xs = [0.50, 0.52, 0.54, 0.56, 0.58, 0.60]
+    fires, whys = run(["farther"] * 6, xs, "farther")
+    check("trend veto: latest ordinal 'farther' blocks the fire", not fires, [w for w in whys])
+    check("trend veto: reason in trend_why", any(w and w.startswith("veto: Haiku says farther") for w in whys), whys)
+    # control: approaching with "closer" fires, and the event carries the trend field
+    fires, _ = run(["closer"] * 6, xs, "closer")
+    check("trend: approach fires and the event carries trend {gap, ordinal, touching, loom}",
+          fires and all(k in fires[0].extra.get("trend", {}) for k in ("gap", "ordinal", "touching", "loom")),
+          fires[0].extra if fires else None)
+
+
+def test_decisions_and_tracer():
+    """Decision records ("why not"), the staleness gate, the decision-time gaze check, and the trace writer's caps."""
+    look = R.rule_from_dict({"id": "look", "name": "look", "describe": "lion", "gaze_mode": "looking_at",
+                             "cooldown_s": 3, "if": {"min_urgency": 0.5}})
+    img = np.zeros((1200, 1600, 3), np.uint8)
+    box = [0.65, 0.3, 0.85, 0.6]
+    f = Frame(5000.0, img, (0.75, 0.45), True)
+
+    def det(**kw):
+        return Detection(None, None, False, 0.0, raw={"frame_ts": f.ts}, frame=f,
+                         triggers={"look": {"match": True, "urgency": .8, "bbox": box, "looked_at_s_ago": 0.1, **kw}})
+    _, rec = look.decide(det(match=False), f.ts + 1)
+    check("decision: no match", rec["why"] == "no match" and not rec["fired"], rec)
+    _, rec = look.decide(det(looked_at_s_ago=2.3), f.ts + 1)
+    check("decision: looking_at why-not", "last in box 2.3 s ago" in rec["why"] and rec["matched"], rec)
+    _, rec = look.decide(det(urgency=0.4), f.ts + 1)
+    check("decision: urgency below min", rec["why"] == "urgency 0.40 < min 0.5", rec)
+    _, rec = look.decide(det(), f.ts + 2.7, {"max_result_age_s": 2.5, "gaze_now": (f.ts + 2.7, 0.75, 0.45)})
+    check("decision: stale result does not fire", rec["why"].startswith("stale: result 2.7 s old"), rec)
+    _, rec = look.decide(det(), f.ts + 1, {"max_result_age_s": 2.5, "gaze_now": (f.ts + 1, 0.2, 0.4)})
+    check("decision: gaze left the box", rec["why"].startswith("gaze left the box"), rec)
+    e, rec = look.decide(det(), f.ts + 1, {"max_result_age_s": 2.5, "gaze_now": (f.ts + 1, 0.75, 0.45)})
+    check("decision: fires", e is not None and rec["fired"] and rec["why"] == "fired", rec)
+    _, rec = look.decide(det(), f.ts + 2, {"max_result_age_s": 2.5, "gaze_now": (f.ts + 2, 0.75, 0.45)})
+    check("decision: cooldown", rec["why"] == "cooldown 2.0 s left", rec)
+    # tracer: background writes, keep_calls cap prunes images + rewrites calls.jsonl
+    from spidey import trace as T
+    tmp = Path(tempfile.mkdtemp())
+    tr = T.Tracer({"dir": str(tmp), "keep_calls": 3, "live": False}, tmp, "unit")
+    for i in range(1, 31):
+        tr.submit({"id": i, "frame_ts": 1.0}, [b"jpg-%d" % i])
+    t_end = time.time() + 5
+    while tr.n_written < 30 and time.time() < t_end:
+        time.sleep(0.05)
+    tr.close()
+    imgs = sorted(p.name for p in (tr.run_dir / "img").iterdir())
+    ids = [int(ln.split('"id": ')[1].split(",")[0]) for ln in tr.calls_path.read_text().splitlines()]
+    check("tracer: keeps the newest keep_calls images", imgs == ["28-0.jpg", "29-0.jpg", "30-0.jpg"], imgs)
+    check("tracer: calls.jsonl pruned to recent calls", ids[-3:] == [28, 29, 30] and len(ids) <= 24, ids)
+
+
 def live_radar(url):
     """Real spidey/radar.py against backend/tests/fake_radar_server.py (start it first on a spare port)."""
     ctl, sink = controller([RADAR_RULE], {"radar": {"enabled": True, "url": url}})
@@ -236,6 +312,8 @@ if __name__ == "__main__":
     test_status_and_backcompat()
     test_gaze_modes()
     test_trend()
+    test_trend_veto()
+    test_decisions_and_tracer()
     if "--live-radar" in sys.argv:
         live_radar(sys.argv[sys.argv.index("--live-radar") + 1])
     print(f"\n{'ALL PASS' if not FAILS else 'FAILED: ' + ', '.join(FAILS)}")

@@ -86,3 +86,41 @@ targets within `max_distance_m` and at least `min_speed_mps` fire. They are unse
 
 **Pause** (`command pause {on}`): detection, memory, logging and broadcasting keep running; `Controller.play` sends
 nothing to the sink, and events are flagged `paused: true`.
+
+## Tracing (backend/spidey/trace.py, viewer backend/spidey/trace_viewer.py)
+
+Config (default on): `trace: {enabled: true, dir: logs/runs, keep_calls: 2000, keep_mb: 500, keep_days: 2, live: true, live_hz: 10}`.
+Each engine run writes `backend/logs/runs/<YYYYmmdd-HHMMSS>-<config name>/`:
+
+| File | What |
+|---|---|
+| `meta.json` | config name, commit, detector settings (no key), sink/source, the system prompt text keyed by its sha256 |
+| `calls.jsonl` | one record per **full** Haiku call (below) |
+| `img/<id>-<k>.jpg` | the exact JPEG bytes sent in call `id` (gaze dot as drawn), k = 0.. oldest first (3 for temporal calls) |
+| `live/frame.jpg`, `live/live.json` | newest scene frame (~640 px) + gaze trail (1 s) + each trigger's newest box/state, ~10x/s, atomic rename |
+| `truth.jsonl` | ground truth from the desk page (`{t, test, shown}`), via the viewer's `POST /api/truth` |
+
+A call record: `id`, `frame_ts`, `t_result`, `images[{label, file, frame_ts, dt, gaze, bytes}]`,
+`prompt{model, system_sha, user_text, triggers}`, `raw_text`, `parsed`, `usage{input_tokens, output_tokens, cache_read}`,
+`timings{dispatch, queue_ms, frame_to_dispatch_ms, early_ms, full_ms, frame_to_early_ms, frame_to_result_ms}`,
+`detection`, `gaze{<trigger>: {boxes, since, n_samples, n_inside, looked_at_s_ago, samples[[dt, x, y, inside]], trend_state}}`,
+`decisions[{id, name, fired, matched, why, gaze_mode, haiku_reason}]`, `early{t, fired}` (the streamed early result of the
+same call), `events`, `decision_ctx{max_result_age_s, gaze_now}`, `paused`, `quiet`. Calls dropped as stale (a newer frame's
+result was already delivered) get a record with `stale: true` and no evaluation.
+
+How it stays off the critical path: the detector keeps the JPEG bytes it already encoded (`Detection.trace`, only while
+tracing); the engine builds a dict (no encoding, no I/O) and `put_nowait`s it on a bounded queue; a writer thread saves the
+images + JSON line and prunes (oldest calls/images past `keep_calls` / `keep_mb`; `calls.jsonl` rewritten atomically when it
+holds 10 % more lines than kept calls; runs older than `keep_days` or past `keep_mb` in total deleted at start). The live view
+is latest-wins: the loop hands over a frame reference + a small state dict ≤ 10x/s; a second thread resizes, encodes, writes.
+
+"Why not": `Rule.decide(det, now, ctx)` returns `(event | None, decision)`; `rules.apply_explained` collects one decision per
+enabled camera trigger. `Rule.explain` mirrors the match logic and names the failing condition; `decide` adds the
+staleness gate (`max_result_age_s`), the decision-time gaze check for `looking_at` (newest gaze sample inside the box) and the
+cooldown. `TriggerMemory.annotate(..., trace=dict)` fills the gaze samples used per trigger and the trend state, and `_trend`
+writes `trend_why` (incl. `veto: Haiku says farther`). The app gets the same decisions via `trace` messages (protocol.md).
+
+Viewer: `./scripts/traces.sh` → http://localhost:8096/ (cards, filters by trigger / fired / misses, overlays: boxes green =
+fired, amber = matched not fired, gaze samples green inside / red outside, cyan ring = gaze at decision time; ground truth at
+frame and decision time) and http://localhost:8096/live (live scene + gaze trail + boxes + trigger-state panel, polls 5x/s).
+`./scripts/traces.sh lan` binds 0.0.0.0 for a phone / second screen.

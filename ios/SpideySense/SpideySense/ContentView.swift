@@ -56,6 +56,8 @@ struct LogView: View {
     @State private var selected: HapticEvent?
     @State private var senseFilter: String?   // trigger id; nil = all senses
     @State private var unreachable = false     // offline for more than 3 s
+    @State private var liveDecisions = false   // stream `trace` (one per Haiku call) while on
+    @State private var selectedTrace: Trace?
 
     private var showingSample: Bool { stream.events.isEmpty && !stream.isLive }
     private var source: [HapticEvent] { showingSample ? MockData.events : stream.events }
@@ -92,6 +94,7 @@ struct LogView: View {
                     SampleBanner(text: "Sample data: not connected to the Mac engine. Set the server in Settings.")
                         .listRowSeparator(.hidden)
                 }
+                LiveDecisionsRows(stream: stream, on: $liveDecisions, selected: $selectedTrace)
                 ForEach(items) { item in
                     switch item {
                     case .system(let r):
@@ -137,6 +140,17 @@ struct LogView: View {
                 }
             }
             .sheet(item: $selected) { e in EventDetail(event: e) }
+            .background { Color.clear.sheet(item: $selectedTrace) { t in TraceDetail(trace: t) } }
+            // Live decisions: the engine only streams while it heard trace.subscribe in the last 5 s.
+            .task(id: "\(liveDecisions)-\(stream.isLive)") {
+                guard liveDecisions, stream.isLive else { return }
+                while !Task.isCancelled {
+                    stream.subscribeTrace(true)
+                    try? await Task.sleep(for: .seconds(2))
+                }
+            }
+            .onChange(of: liveDecisions) { _, on in if !on { stream.subscribeTrace(false) } }
+            .onDisappear { if liveDecisions { stream.subscribeTrace(false) } }
             .task(id: stream.isLive) {
                 if stream.isLive { unreachable = false; return }
                 try? await Task.sleep(for: .seconds(3))
@@ -370,6 +384,9 @@ struct EventDetail: View {
                     }
                     if let t = event.trend, !t.summary.isEmpty {
                         Label(t.summary, systemImage: "timer").font(.subheadline).foregroundStyle(.purple)
+                    }
+                    if event.haikuRaw != nil || event.callID != nil {
+                        HaikuRawSection(callID: event.callID, raw: event.haikuRaw)
                     }
                     Text(event.prettyJSON)
                         .font(.system(.footnote, design: .monospaced))

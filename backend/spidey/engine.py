@@ -18,6 +18,7 @@ import yaml
 
 from . import heart as H
 from . import rules as R
+from . import trace as T
 from .detectors import make_detector
 from .server import EventServer
 from .sinks import make_sink
@@ -103,6 +104,7 @@ class Controller:
         self.commit = git_commit()
         self.radar_log = None                # the engine's JSONL log (set by run), shared with the radar thread
         self._log_lock = threading.Lock()
+        self.trace_sub_ts = 0.0              # last trace.subscribe {on: true} from an app (stream while < 5 s old)
         # One source of truth: the triggers file. Seeded once (config rules, else defaults); after that
         # config `rules:` are ignored and the file (edited live by the app) wins.
         seed = cfg.get("rules_seed")          # optional: a triggers file to copy when rules_path is missing
@@ -300,6 +302,10 @@ class Controller:
                 if paused:
                     ev["paused"] = True
                 out.append(dict(ev))
+                if det is not None and det.raw.get("call_id"):
+                    ev["call_id"] = det.raw["call_id"]          # app: link to the trace / raw Haiku output
+                    if det.raw.get("text"):
+                        ev["raw"] = det.raw["text"][:2000]
                 if self.server:
                     if e.sensor == "camera" and det is not None:
                         thumb = make_thumb(det.frame, e.extra.get("bbox"), e.extra.get("target_bbox"))
@@ -484,6 +490,7 @@ class Controller:
         server.on("rules.reset", self.on_reset)
         server.on("feedback", self.on_feedback)
         server.on("command", self.on_command)
+        server.on("trace.subscribe", self.on_trace_subscribe)
         server.add_periodic(5.0, self.device_status)
         server.add_periodic(2.0, self.status_msg)
         if self.haptics:
@@ -492,6 +499,14 @@ class Controller:
                 server.on(kind, self.on_haptic)
             self.haptics.on_telemetry = server.broadcast
             self.haptics.on_system = self.system_event
+
+    # ---- "why didn't it fire": per-call trace stream for the app ---------------------------
+    def on_trace_subscribe(self, msg: dict) -> dict:
+        self.trace_sub_ts = time.time() if msg.get("on", True) else 0.0
+        return {"type": "ack", "for": "trace.subscribe", "ok": True}
+
+    def trace_subscribed(self) -> bool:
+        return self.server is not None and time.time() - self.trace_sub_ts < 5.0
 
     # ---- Haptics tab + link check -------------------------------------------------------
     def system_event(self, level: str, text: str) -> None:
@@ -538,6 +553,52 @@ class Controller:
         return {"type": "ack", "for": kind, **r}
 
 
+def trace_message(rec: dict, det) -> dict:
+    """The app's `trace` message; near misses (a trigger matched but didn't fire) carry a thumbnail."""
+    msg = T.light_record(rec)
+    miss = next((d for d in rec["decisions"] if d.get("matched") and not d.get("fired")), None)
+    if miss is not None:
+        msg["near_miss"] = True
+        t = det.triggers.get(miss["id"]) or {}
+        thumb = make_thumb(det.frame, t.get("subject_bbox") or t.get("bbox"), t.get("target_bbox"))
+        if thumb:
+            msg["thumb"] = thumb
+    return msg
+
+
+def live_state(ctl: Controller, frame, last_call: dict, last_decision: dict) -> dict:
+    """Small dict for the viewer's /live page (written by the tracer's live thread): gaze trail (last 1 s),
+    each enabled camera trigger's newest box + state."""
+    now = time.time()
+    g = ctl.memory.gaze
+    trail = [[round(ts - frame.ts, 2), round(x, 3), round(y, 3)] for ts, x, y in list(g)[-200:] if ts >= frame.ts - 1.0]
+    gnow = trail[-1][1:] if trail else None
+    trig = []
+    for r in ctl.active_rules():
+        if r.source not in R.VISION_SOURCES:
+            continue
+        d = last_decision.get(r.id) or {}
+        box = d.get("bbox")
+        cool = r.cooldown_s - (now - r._last)
+        if d.get("fired_ts") and now - d["fired_ts"] < 1.5:
+            state = "fired"
+        elif cool > 0.05:
+            state = f"cooldown {cool:.1f} s"
+        else:
+            state = "armed"
+        hint = None
+        if box and gnow and r.effective_gaze_mode != "any" and not r.temporal:
+            hint = "gaze inside box" if R.in_box(gnow[0], gnow[1], box) else "gaze outside box"
+        trig.append({"id": r.id, "name": r.name, "gaze_mode": r.effective_gaze_mode, "temporal": r.temporal,
+                     "state": state, "why": d.get("why"), "matched": d.get("matched"), "fired_ts": d.get("fired_ts"),
+                     "bbox": box, "target_bbox": d.get("target_bbox"), "hint": hint,
+                     "box_age_s": round(now - d["frame_ts"], 2) if d.get("frame_ts") else None})
+    return {"frame_ts": frame.ts, "now": now, "frame_age_s": round(now - frame.ts, 3), "gaze": gnow,
+            "trail": trail, "paused": ctl.paused, "quiet": ctl.quiet,
+            "last_call": {**last_call, "age_s": round(now - last_call["frame_ts"], 2)} if last_call else None,
+            "triggers": trig}
+
+
 def run(cfg: dict, duration_s: float | None = None) -> None:
     source = make_source(cfg.get("source", {}))
     detector = make_detector(cfg.get("detector", {}))
@@ -553,6 +614,29 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
     if server:
         ctl.attach(server)
 
+    det_cfg = cfg.get("detector") or {}
+    tracer = T.make_tracer(cfg, ROOT, {"commit": ctl.commit, "detector": {k: v for k, v in det_cfg.items()
+                                                                          if k != "env_file"},
+                                       "source": (cfg.get("source") or {}).get("type", "fake"),
+                                       "sink": (cfg.get("sink") or {}).get("type", "console")})
+    system_sha = None
+    if hasattr(detector, "system_text"):
+        system_sha = tracer.add_system_prompt(detector.system_text) if tracer else T.sha(detector.system_text)
+    if tracer and hasattr(detector, "trace"):
+        detector.trace = True
+
+        def on_stale(d):        # a full result dropped because a newer frame's result was already delivered
+            rec, imgs = T.call_record(d, decisions=None, gaze=None, early=None, t_result=time.time(), events=None,
+                                      paused=ctl.paused, quiet=ctl.quiet, system_sha=system_sha, stale=True)
+            tracer.submit(rec, imgs)
+        detector.on_stale = on_stale
+    # staleness gate: don't fire on a result whose frame is older than this (the scene has likely changed)
+    max_age = cfg.get("max_result_age_s", 2.5)
+    early_info: dict = {}                   # call id -> {t, fired} of its early (streamed) result
+    live_every, last_live = 1.0 / float(((cfg.get("trace") or {}).get("live_hz") or 10)), 0.0
+    last_call: dict = {}                    # newest full call, for the live view
+    last_decision: dict = {}                # trigger id -> newest decision record (+ ts, bbox)
+
     log_path = ROOT / cfg.get("log", "logs/events.jsonl")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"source={type(source).__name__} detector={type(detector).__name__} "
@@ -567,6 +651,9 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
             for frame in source.frames():
                 ctl.note_frame(frame)
                 ctl.memory.add_frame(frame)          # gaze history for looked_at_s_ago
+                if tracer and frame.ts - last_live >= live_every:
+                    last_live = frame.ts
+                    tracer.live(frame, live_state(ctl, frame, last_call, last_decision))
                 if duration_s and time.time() - t_start > duration_s:
                     break
                 if time.time() - last_detect < every:
@@ -585,8 +672,11 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                 frame_ts = det.raw.setdefault("frame_ts", frame.ts)
 
                 rules = ctl.active_rules()
-                ctl.memory.annotate(det, rules, t_detected)     # real gaze vs boxes, temporal trends
-                events = R.apply(rules, det, t_detected)
+                full = not det.raw.get("early")
+                gaze_tr = {} if full else None
+                ctl.memory.annotate(det, rules, t_detected, gaze_tr)     # real gaze vs boxes, temporal trends
+                ctx = {"max_result_age_s": max_age, "gaze_now": ctl.memory.newest_gaze()}
+                events, decisions = R.apply_explained(rules, det, t_detected, ctx)
                 state = (det.hazard, det.seen_by_user)
                 if state != prev_hazard:
                     print(f"[{t_detected - t_start:5.1f}s] hazard={det.hazard} where={det.where} "
@@ -594,6 +684,28 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                     prev_hazard = state
                 logged = ctl.emit(events, det, t_start)
                 t_done = time.time()
+                cid = det.raw.get("call_id")
+                if cid and not full:
+                    early_info[cid] = {"t": t_detected, "fired": [d["id"] for d in decisions if d["fired"]]}
+                    while len(early_info) > 50:
+                        early_info.pop(next(iter(early_info)))
+                elif cid and (tracer or ctl.trace_subscribed()):
+                    rec, imgs = T.call_record(det, decisions=decisions, gaze=gaze_tr, early=early_info.pop(cid, None),
+                                              t_result=t_detected, events=logged, paused=ctl.paused,
+                                              quiet=ctl.quiet, system_sha=system_sha, ctx=ctx)
+                    if tracer:
+                        tracer.submit(rec, imgs)
+                    if ctl.trace_subscribed():
+                        ctl.server.broadcast(trace_message(rec, det))
+                if full and cid:
+                    last_call.update(id=cid, ts=t_detected, frame_ts=frame_ts, hazard=det.hazard, reason=det.reason)
+                    for d in decisions:
+                        t = det.triggers.get(d["id"]) or {}
+                        box = t.get("subject_bbox") if t.get("subject_bbox") else t.get("bbox")
+                        last_decision[d["id"]] = {**d, "ts": t_detected, "frame_ts": frame_ts, "bbox": box,
+                                                  "target_bbox": t.get("target_bbox"),
+                                                  "fired_ts": t_detected if d["fired"]
+                                                  else last_decision.get(d["id"], {}).get("fired_ts")}
 
                 with ctl._log_lock:
                     log.write(json.dumps({
@@ -622,6 +734,8 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
             except Exception:
                 pass
         ctl.radar_log = None
+        if tracer:
+            tracer.close()
         sink.close()
         detector.close()
         source.close()

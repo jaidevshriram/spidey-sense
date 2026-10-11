@@ -261,3 +261,41 @@ Device card `oura` (in `device.status`; replaces the `coming_soon` stub):
 (the ring is out of range / not worn / the CLI is restarting) | `off` (not enabled: `detail` = "off (heart.enabled: false)",
 like the radar card).
 Older engines still send `status: "coming_soon"`; the app keeps showing "Coming soon" for that.
+
+## Live decisions: per-call trace stream ("why didn't it fire") (added 19:16)
+
+App -> server: `{"type":"trace.subscribe","on":true}`, resent every ~2 s while the Log's "Live decisions" toggle is on
+(like `haptic.subscribe`). The engine streams `trace` only while the last `on: true` is < 5 s old; `on: false` stops at once.
+Reply: `{"type":"ack","for":"trace.subscribe","ok":true}`.
+
+Server -> app, one per **full** Haiku call while subscribed (no images, except a small thumbnail on near misses):
+
+```json
+{"type": "trace", "id": 812, "ts": 1791684221.25, "t": 1791684222.70,
+ "hazard": null, "urgency": 0.0, "reason": "Person at laptop; no hazards visible.",
+ "latency_ms": 1432.0, "n_images": 1, "paused": false, "stale": false, "error": null,
+ "raw": "{\"hazard\": null, ...}",
+ "near_miss": true, "thumb": "<base64 JPEG ~240 px: gaze dot + the trigger's box>",
+ "decisions": [{"id": "big_cat_look", "name": "Big cat (looking)", "fired": false, "matched": true,
+                "why": "match, but looking_at needs gaze in box ≤0.6 s; last in box 2.3 s ago",
+                "gaze_mode": "looking_at", "haiku_reason": "Tiger visible on laptop screen"}]}
+```
+
+- `id` = call id (also in `backend/logs/runs/<run>/calls.jsonl` and on camera events as `call_id`), `ts` = frame capture time,
+  `t` = result time, `latency_ms` = frame -> result, `raw` = Haiku's raw reply (<= 2000 chars).
+- `decisions`: one per enabled camera trigger. `matched` = Haiku matched it (or the trend layer fired); `why` is the reason it
+  did not fire: `no match`, `not in Haiku's reply`, `match, but looking_at needs gaze in box ≤0.6 s; last in box 2.3 s ago`,
+  `match, but unseen: looked at it 1.4 s ago (notice memory 3 s)`, `urgency 0.40 < min 0.5`, `cooldown 2.1 s left`,
+  `stale: result 2.7 s old (max 2.5 s)`, `gaze left the box (gaze now at 0.31,0.55)`, `trend: too far: gap 1.25 > 1.0 body-heights`,
+  `trend: veto: Haiku says farther`, `trend: disarmed after firing (...)`; `fired` when it fired. A fired decision while
+  `paused: true` was not played.
+- `near_miss: true` (+ `thumb`) when some decision has `matched: true, fired: false`.
+- `stale: true`: the call's result arrived after a newer frame's result and was dropped without evaluation.
+
+Camera `event`s also carry `call_id` and `raw` (Haiku's raw reply text) for the Log row detail sheet.
+
+Engine-side gates added with this (they change firing): `max_result_age_s` (config, default 2.5): no fire on a result whose
+frame is older than that at decision time; `looking_at` triggers with a box also need the **newest** gaze sample inside the box
+(4 % margin) at decision time. Temporal triggers: the latest tick's `ordinal: "farther"` (or a gap that grew by more than ε)
+vetoes a fire unless `touching`.
+

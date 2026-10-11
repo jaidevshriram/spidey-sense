@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3C0C43B561C9A5B30A7096D8 /* LiveDecisions.swift in Sources */ = {isa = PBXBuildFile; fileRef = B44BE9BDE1EC01D391EB02F4 /* LiveDecisions.swift */; };
 		3DD150F2362031E696CB742E /* SpideySenseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0954D0BB0B18FCE7C9ABDF6D /* SpideySenseApp.swift */; };
 		5ED87E7AA79F7591BCD0D178 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EAA5D261EC93D6A6E9D0D04 /* EventStream.swift */; };
 		665125A3EB7E72BA3E12CBB5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46A06D06C6C5090B12B02A3 /* SettingsView.swift */; };
@@ -35,6 +36,7 @@
 		7DE44BEE81A253F8FA48CD3F /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
 		8EAA5D261EC93D6A6E9D0D04 /* EventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStream.swift; sourceTree = "<group>"; };
 		A3DB8512624D457A26D58539 /* SensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensesView.swift; sourceTree = "<group>"; };
+		B44BE9BDE1EC01D391EB02F4 /* LiveDecisions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDecisions.swift; sourceTree = "<group>"; };
 		CB5DDB272DAB8FA926675C21 /* EngineHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHeader.swift; sourceTree = "<group>"; };
 		D46A06D06C6C5090B12B02A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		DE8C5F83C5B37487B2A69CF0 /* Protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocol.swift; sourceTree = "<group>"; };
@@ -53,6 +55,7 @@
 				8EAA5D261EC93D6A6E9D0D04 /* EventStream.swift */,
 				F681C6798CE5B8235239A9FB /* HapticsView.swift */,
 				3F75FFAC84C7D5F5C028B7FF /* Info.plist */,
+				B44BE9BDE1EC01D391EB02F4 /* LiveDecisions.swift */,
 				FB70254162A5B6CF34E181CE /* MockData.swift */,
 				21C6C26B4938CED3BCAE6D54 /* Model.swift */,
 				DE8C5F83C5B37487B2A69CF0 /* Protocol.swift */,
@@ -180,6 +183,7 @@
 				6F698C43F0CE8F9480F12BFE /* EngineHeader.swift in Sources */,
 				5ED87E7AA79F7591BCD0D178 /* EventStream.swift in Sources */,
 				AAD3AFC3025D30E8D2F9C5B4 /* HapticsView.swift in Sources */,
+				3C0C43B561C9A5B30A7096D8 /* LiveDecisions.swift in Sources */,
 				B336346F212E268F8411F177 /* MockData.swift in Sources */,
 				94CB4848DF6EDA5EE439B7D4 /* Model.swift in Sources */,
 				BB54A6B19BA0B1A3DC133749 /* Protocol.swift in Sources */,

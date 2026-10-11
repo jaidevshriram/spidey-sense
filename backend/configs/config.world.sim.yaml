@@ -1,0 +1,48 @@
+# WORLD-style sim (tools/world_scene.py): no monitor in view, so Haiku judges the scene as real.
+# Desk test without hardware: the mock scene-camera stills of the desk page (picture on the right, text on the left)
+# with scripted gaze, real Haiku, console sink. No server (so the app keeps talking to the real engine on 8765),
+# no Bluetooth, no radar.
+#   .venv/bin/python backend/desk_test/scene.py          # once: renders logs/desk_sim/desk_*.jpg + lake.mp4
+#   python3 backend/run.py --config backend/configs/config.desk.sim.yaml --seconds 30
+# The scored pre-runs of tests A-D (timelines, hit/miss table) are backend/desk_test/run_sim.py.
+# For the lake clip instead of the pictures: replace `paths`/`hold_s` with  path: ../../logs/desk_sim/lake.mp4
+
+source:
+  type: fake
+  paths: [../../logs/world_sim/world_lion.jpg, ../../logs/world_sim/world_tiger.jpg, ../../logs/world_sim/world_dog.jpg,
+          ../../logs/world_sim/world_car.jpg, ../../logs/world_sim/world_house.jpg]
+  hold_s: 6                   # like the page: 6 s per picture
+  fps: 15
+  gaze: script
+  gaze_script:                # world frames: subject ~(0.69, 0.50), street sign ~(0.17, 0.42)
+    - [0.0, 0.69, 0.50]       # lion: looking at it
+    - [3.0, 0.17, 0.42]       # lion: reading the sign
+    - [6.0, 0.17, 0.42]       # tiger: reading the sign
+    - [9.0, 0.69, 0.50]       # tiger: looking at it
+    - [12.0, 0.69, 0.50]      # dog / car / house: looking at it
+    - [24.0, 0.17, 0.42]
+
+detector:
+  type: vlm
+  model: claude-haiku-5-5
+  max_side: 512
+  jpeg_quality: 70
+  concurrency: 3
+  stream: true
+  max_tokens: 200
+  min_interval_s: 0.4
+  env_file: ../../.env
+  treat_screens_as_real: true   # desk: the lion on the monitor counts as a real lion (prompt addendum)
+
+detect_every_s: 0
+rules_file: ../logs/world_sim/triggers.world.sim.json   # under repo-root logs/ (gitignored)
+rules_seed: desk_test/triggers.desk.json              # copied once when rules_file is missing ...
+rules_seed_enable: [big_cat_look, lion_unnoticed]     # ... with these turned on (delete the file to re-seed)
+
+sink:
+  type: console
+
+log: ../logs/world_sim/world_sim_events.jsonl
+
+server:
+  enabled: false              # never 8765 here: the real engine with the Dot runs there

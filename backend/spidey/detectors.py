@@ -81,13 +81,20 @@ class VLMDetector(Detector):
         "touches or enters the target now."
     )
 
+    SCREENS_AS_REAL = (
+        " This is a desk simulation of the real world: treat anything shown on a screen, monitor or picture as if it "
+        "were physically in front of the wearer at that position. Do not discount hazards or triggers for being an "
+        "image or on a monitor; judge urgency as if real."
+    )
+
     TEMPORAL_OFFSETS = (1.4, 0.7)      # older frames sent with temporal triggers (seconds before "now")
     RING_EVERY_S = 0.1                 # keep a small copy of a frame at most this often
     RING_S = 2.5
 
     def __init__(self, model: str = "claude-haiku-5-5", max_side: int = 384, jpeg_quality: int = 70,
                  max_tokens: int = 200, min_interval_s: float = 0.4, concurrency: int = 2,
-                 stream: bool = True, cache: bool = True, env_file: str | None = None):
+                 stream: bool = True, cache: bool = True, env_file: str | None = None,
+                 treat_screens_as_real: bool = False):
         import os
         from concurrent.futures import ThreadPoolExecutor
 
@@ -103,6 +110,8 @@ class VLMDetector(Detector):
         self.model, self.max_side, self.jpeg_quality = model, max_side, jpeg_quality
         self.max_tokens, self.min_interval_s = max_tokens, min_interval_s
         self.concurrency, self.stream, self.cache = max(1, concurrency), stream, cache
+        # desk tests: on-screen content counts as real (appended to the system prompt; JSON key order unchanged)
+        self.system_text = self.SYSTEM + (self.SCREENS_AS_REAL if treat_screens_as_real else "")
         self.triggers: list[tuple[str, str, bool]] = []   # (id, description, temporal), set by the engine
         self._ring: list[tuple[float, Frame]] = []    # (ts, downscaled frame) for temporal triggers
         self._pool = ThreadPoolExecutor(max_workers=self.concurrency)
@@ -112,6 +121,9 @@ class VLMDetector(Detector):
         self._in_flight = 0
         self._last_dispatch = 0.0
         self._last_delivered = [0.0, 0.0]   # newest frame_ts delivered per stage: [early, full]
+        self.trace = False                  # engine sets True: keep the exact JPEGs + prompt on Detection.trace
+        self.on_stale = None                # engine callback(det): a full result dropped as stale (for the tracer)
+        self._call_id = 0
 
     # ---- request building ---------------------------------------------------------------
     def set_triggers(self, triggers: list[tuple]) -> None:
@@ -124,7 +136,7 @@ class VLMDetector(Detector):
         return any(t[2] for t in self.triggers)
 
     def system_blocks(self) -> list[dict]:
-        blocks = [{"type": "text", "text": self.SYSTEM}]
+        blocks = [{"type": "text", "text": self.system_text}]
         if self.cache:
             blocks[0]["cache_control"] = {"type": "ephemeral"}
         return blocks
@@ -166,6 +178,10 @@ class VLMDetector(Detector):
 
     def prepare(self, frame: Frame) -> str:
         """Downscale to max_side px, draw the gaze dot, return base64 JPEG."""
+        return base64.b64encode(self.prepare_jpeg(frame)).decode()
+
+    def prepare_jpeg(self, frame: Frame) -> bytes:
+        """The JPEG bytes sent to the model: downscaled to max_side px, gaze dot drawn."""
         img = frame.image
         h, w = img.shape[:2]
         scale = self.max_side / max(h, w)
@@ -176,26 +192,34 @@ class VLMDetector(Detector):
             s = min(scale, 1.0)
             cv2.circle(small, (int(g[0] * s), int(g[1] * s)), max(5, int(8 * self.max_side / 512)), (0, 0, 255), -1)
         ok, jpg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
-        return base64.b64encode(jpg.tobytes()).decode()
+        return jpg.tobytes()
 
     # ---- one call -----------------------------------------------------------------------
     _EARLY = re.compile(r'"hazard"\s*:\s*(null|"(?:[^"\\]|\\.)*")\s*,\s*"urgency"\s*:\s*([0-9.]+)\s*,'
                         r'\s*"x"\s*:\s*([0-9.]+|null)\s*,\s*"seen_by_user"\s*:\s*(true|false)')
 
-    def call(self, frame: Frame, history: list[tuple[str, Frame]] | None = None) -> Detection:
+    def call(self, frame: Frame, history: list[tuple[str, Frame]] | None = None, call_id: int = 0,
+             t_submit: float | None = None) -> Detection:
         """One model call for one frame (plus, with temporal triggers, 2 older labelled frames in the same
         request). With stream=True, delivers an early Detection when the built-in fields have arrived,
         then returns the full one."""
-        t0 = time.perf_counter()
+        t0, t_start = time.perf_counter(), time.time()
         trig = list(self.triggers)
         history = history or [("now", frame)]
-        content = []
+        content, sent = [], []
         for label, f in history:
             if len(history) > 1:
                 content.append({"type": "text", "text": label})
+            jpg = self.prepare_jpeg(f)
+            if self.trace:
+                sent.append({"label": label, "frame_ts": f.ts, "jpeg": jpg, "gaze": f.gaze_xy, "gaze_norm": f.gaze_norm,
+                             "src_wh": [f.image.shape[1], f.image.shape[0]]})
             content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                        "data": self.prepare(f)}})
-        content.append({"type": "text", "text": self.user_text(trig)})
+                                                        "data": base64.b64encode(jpg).decode()}})
+        user_text = self.user_text(trig)
+        content.append({"type": "text", "text": user_text})
+        tr = {"call_id": call_id, "t_submit": t_submit or t_start, "t_start": t_start, "images": sent,
+              "user_text": user_text, "triggers": [list(t) for t in trig], "model": self.model} if self.trace else None
         n_temporal = sum(1 for t in trig if t[2])
         kwargs = dict(model=self.model, max_tokens=self.max_tokens + 90 * len(trig) + 40 * n_temporal,
                       thinking={"type": "disabled"}, output_config={"effort": "low"},
@@ -210,12 +234,15 @@ class VLMDetector(Detector):
                         m = self._EARLY.search(text)
                         if m:
                             early_ms = (time.perf_counter() - t0) * 1000
+                            if tr is not None:
+                                tr["t_early"] = time.time()
                             hz = None if m.group(1) == "null" else json.loads(m.group(1)) or None
                             u = max(0.0, min(1.0, float(m.group(2))))
                             self._deliver(Detection(
                                 hz, where_from_x(m.group(3)) if hz else None, m.group(4) == "true",
                                 u if hz else 0.0, early_ms,
-                                {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "early": True}, frame=frame),
+                                {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "early": True, "call_id": call_id},
+                                frame=frame),
                                 frame.ts, 0)
                 resp = st.get_final_message()
         else:
@@ -223,12 +250,14 @@ class VLMDetector(Detector):
             text = "".join(b.text for b in resp.content if b.type == "text")
         latency = (time.perf_counter() - t0) * 1000
         u = resp.usage
-        raw = {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "text": text, "stop_reason": resp.stop_reason,
+        if tr is not None:
+            tr["t_full"] = time.time()
+        raw = {"frame_ts": frame.ts, "call_id": call_id, "gaze": frame.gaze_xy, "text": text, "stop_reason": resp.stop_reason,
                "n_triggers": len(trig), "n_images": len(history), "early_ms": early_ms, "input_tokens": u.input_tokens,
                "output_tokens": u.output_tokens, "cache_read": getattr(u, "cache_read_input_tokens", 0)}
         data = parse_json(text)
         if data is None:
-            return Detection(None, None, False, 0.0, latency, raw | {"parse_error": True}, frame=frame)
+            return Detection(None, None, False, 0.0, latency, raw | {"parse_error": True}, frame=frame, trace=tr)
         hazard = data.get("hazard") or None
         try:
             urgency = max(0.0, min(1.0, float(data.get("urgency") or 0)))
@@ -250,7 +279,7 @@ class VLMDetector(Detector):
                         out[k] = t[k]
                 triggers[str(tid)] = out
         return Detection(hazard, where, bool(data.get("seen_by_user")), urgency if hazard else 0.0, latency, raw,
-                         reason=str(data.get("reason") or "")[:200], triggers=triggers, frame=frame)
+                         reason=str(data.get("reason") or "")[:200], triggers=triggers, frame=frame, trace=tr)
 
     # ---- scheduling ---------------------------------------------------------------------
     def _deliver(self, det: Detection, frame_ts: float, stage: int) -> None:
@@ -260,19 +289,31 @@ class VLMDetector(Detector):
             # the custom triggers); an early result is stale if any newer result of either stage was delivered.
             newest = self._last_delivered[1] if stage == 1 else max(self._last_delivered)
             if frame_ts <= newest:
+                if stage == 1 and self.on_stale is not None:
+                    det.raw["stale"] = True
+                    try:
+                        self.on_stale(det)
+                    except Exception:
+                        pass
                 return
             self._last_delivered[stage] = frame_ts
             self._results.append(det)
 
-    def _run_one(self, frame: Frame, history: list | None = None) -> None:
+    def _run_one(self, frame: Frame, history: list | None = None, call_id: int = 0,
+                 t_submit: float | None = None) -> None:
         import anthropic
 
         t0 = time.time()
         try:
-            det = self.call(frame, history)
+            det = self.call(frame, history, call_id, t_submit)
         except anthropic.APIError as e:
             det = Detection(None, None, False, 0.0, (time.time() - t0) * 1000,
-                            {"frame_ts": frame.ts, "error": f"{type(e).__name__}: {e}"}, frame=frame)
+                            {"frame_ts": frame.ts, "call_id": call_id, "error": f"{type(e).__name__}: {e}"},
+                            frame=frame,
+                            trace={"call_id": call_id, "t_submit": t_submit or t0, "t_start": t0,
+                                   "t_full": time.time(), "images": [], "user_text": self.user_text(self.triggers),
+                                   "triggers": [list(t) for t in self.triggers], "model": self.model}
+                            if self.trace else None)
         finally:
             with self._lock:
                 self._in_flight -= 1
@@ -289,9 +330,11 @@ class VLMDetector(Detector):
                 self._in_flight += 1
                 self._last_dispatch = now
                 f, self._pending = self._pending, None
+                self._call_id += 1
+                cid = self._call_id
             det = self._results.pop(0) if self._results else None
         if launch:
-            self._pool.submit(self._run_one, f, self.history_for(f))
+            self._pool.submit(self._run_one, f, self.history_for(f), cid, now)
         return det
 
     def close(self) -> None:

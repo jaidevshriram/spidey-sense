@@ -448,3 +448,33 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - Lake (25 s, 38 calls): **false positive.** person_to_water(+unwatched) fired at 5.1 s while Haiku said `ordinal: "farther"`
   ("moving away from the water's edge"); the gap was near (0.45 bh) and noisy boxes passed the shrink test → a veto on
   latest "farther" / growing gap is being added. A correct fire at 10.5 s ("walks toward the lake edge, closer than earlier frames").
+
+### 19:16 Per-call Haiku tracing, trace viewer, app "Live decisions", staleness + gaze-at-decision gates
+- Engine: `backend/spidey/trace.py` (new). Each run writes `backend/logs/runs/<YYYYmmdd-HHMMSS>-<config>/` with
+  `calls.jsonl` (images sent, prompt sha + user text, raw text, parsed JSON, timings incl. the early-fields time, tokens,
+  gaze samples per trigger + looked_at_s_ago, trend state, the rule decision per enabled trigger with why-not), `img/<id>-<k>.jpg`
+  (exact JPEG bytes sent), `live/` (frame + state ~10x/s) and `truth.jsonl`. Background writer queue (never blocks), caps
+  `keep_calls 2000 / keep_mb 500`, runs > 2 days pruned. Config `trace:` (default on).
+- Rules: `Rule.explain/decide` + `rules.apply_explained` return decision records ("no match", "match, but looking_at needs gaze
+  in box ≤0.6 s; last in box 2.3 s ago", "cooldown 2.1 s left", "urgency 0.40 < min 0.5", "trend: ...").
+  Behavior changes (requested after the live test): `max_result_age_s` (2.5 s) staleness gate; `looking_at` also needs the newest
+  gaze sample in the box at decision time; temporal fires vetoed when the latest tick says `farther` or the gap grew (the lake
+  sim false positive). `TriggerMemory`: `newest_gaze()`, optional `trace=` arg in `annotate`, `trend_why`, the veto.
+- Detector: `Detection.trace` (JPEG bytes, user text, call id, submit/start/early/full times) only while tracing; stale full
+  results reported via `on_stale`; `treat_screens_as_real` (system prompt addendum; on in the desk configs).
+- App protocol: `trace.subscribe {on}` (resend every 2 s; streams while < 5 s old) → `trace` per full call (decisions, raw,
+  near-miss thumbnail); camera events gain `call_id` + `raw`. iOS: Log "Live decisions" toggle + stream (All / Near misses),
+  trace detail sheet with raw output, raw output in the event sheet; Senses locked with "Not connected: changes won't reach
+  the engine" and no optimistic local rule changes while offline (the 19:02 test-A miss).
+- Viewer: `./scripts/traces.sh` (FastAPI, :8096): runs → call cards (thumbnails with SVG overlay of boxes / gaze samples /
+  gaze at decision, Haiku output, per-trigger decision, timings, ground truth at frame + decision), filters, auto-refresh;
+  `/live` page; `POST /api/truth` for the desk page.
+- Tests: `./scripts/desk_test.sh check` ALL PASS (+ decision records, staleness, gaze-left-box, tracer caps, trend veto);
+  `tests.test_radar_client tests.test_heart` 39 OK. Test engine on :8789 (Bonjour off, FakeSource, desk sim pictures + lake clip,
+  real Haiku, console): 76 calls traced, `trace` stream only while subscribed, near misses with thumbnails.
+- Test A analysis (backend/logs/desk_events.jsonl): 19:00:09–19:02:48 230 calls with `n_triggers 0` (big_cat_look not enabled
+  in the engine). 19:02:49–19:03:39 big_cat_look alone: 94 calls, 0 matches; Haiku described "person typing at laptop / holding
+  phone, office", several "blurry / corrupted" frames: the desk page with the cat was not in the scene camera's view. First
+  match 19:03:41 ("Tiger visible in image on laptop screen") with gaze outside the box → not fired (lion_unnoticed fired).
+  First big_cat_look fire 19:04:09 (gaze in box 0.18 s before decision, frame→result 1.63 s).
+
