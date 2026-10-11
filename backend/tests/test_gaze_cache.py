@@ -72,6 +72,11 @@ class TestGazeCache(unittest.TestCase):
         fired, _ = run(self.c, [(0.7, 0.45, 60)], t0=5.6)
         self.assertEqual(fired, {})
 
+    def test_unseen_glance_across_box_is_not_noticing(self):
+        # gaze sweeps through the box for ~0.06 s (a glance), then stays away -> still fires after the grace
+        fired, _ = run(self.c, [(0.2, 0.5, 10), (0.7, 0.45, 10), (0.2, 0.5, 80)])
+        self.assertIn("unseen", fired)
+
 
 if __name__ == "__main__":
     unittest.main()

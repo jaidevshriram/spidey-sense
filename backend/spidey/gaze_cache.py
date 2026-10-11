@@ -58,6 +58,7 @@ class GazeCache:
     max_frame_age_s: float = 4.0  # ...and never if the frame it describes is older than this
     dwell_s: float = 0.2          # looking_at: gaze inside the box this long
     grace_s: float = 0.3          # unseen: gaze outside the box this long (and not noticed recently)
+    notice_dwell_s: float = 0.15  # gaze inside this long = noticed (a sweep across the box is not)
     motion_thresh: float = 18.0   # mean abs diff (0-255) on a 32x24 gray thumbnail = big head move
     entries: dict = field(default_factory=dict)
     _ref: np.ndarray | None = None
@@ -113,11 +114,13 @@ class GazeCache:
             if ts - e.result_ts > self.ttl_s or age > self.max_frame_age_s:
                 out.append(Decision(tid, False, f"box stale ({age:.1f} s)", e.box, e.label, e.urgency, age))
                 continue
-            now_in = inside(e.box, x, y)
+            # unseen: no margin, and only a fixation (>= notice_dwell_s inside) counts as noticing
+            now_in = inside(e.box, x, y, 0.0 if mode == "unseen" else MARGIN)
             if now_in:
                 e.in_since = e.in_since if e.in_since is not None else ts
                 e.out_since = None
-                e.noticed_ts = ts
+                if ts - e.in_since >= self.notice_dwell_s:
+                    e.noticed_ts = ts
             else:
                 e.out_since = e.out_since if e.out_since is not None else ts
                 e.in_since = None

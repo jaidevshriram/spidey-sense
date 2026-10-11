@@ -349,6 +349,8 @@ def apply_heart(rules: list[Rule], sample: dict, now: float) -> list[HapticEvent
 # (0..1 of the frame it saw), the subject->target gap in subject body-heights, the subject's box area ratio
 # ("loom") and Haiku's ordinal closer/same/farther. No metric distances from the camera.
 
+NOTICE_WIN_S = 0.35      # gaze samples within this long before a frame are compared with its boxes
+NOTICE_FRAC = 0.5        # ...and at least this share must be inside (a fixation, not a glance)
 NO_GAZE_AFTER_S = 0.3   # newest gaze sample older than this (vs the newest frame) = no gaze now
 GAZE_HISTORY_S = 5.0
 BOX_MARGIN = 0.04            # gaze within 4% of the frame around a box counts as "on it"
@@ -476,10 +478,21 @@ class TriggerMemory:
             elif st.last_match is not None and now - st.last_match > max(MATCH_GAP_S, r.notice_memory_s):
                 st.match_since = st.last_match = st.noticed_ts = None
             if present and boxes:
-                since = (st.match_since or frame_ts) - 0.3
-                hits = [ts for ts, x, y in self.gaze if ts >= since and any(in_box(x, y, b) for b in boxes)]
-                if hits:
-                    st.noticed_ts = max(st.noticed_ts or 0.0, max(hits))
+                # gaze is only comparable with this frame's boxes around this frame's time (the view moves when
+                # walking / turning); "noticed" = a fixation (>= NOTICE_FRAC of those samples inside), not a sweep.
+                # Earlier calls' fixations carry over through st.noticed_ts.
+                since = frame_ts - NOTICE_WIN_S
+                win_s = [(ts, x, y) for ts, x, y in self.gaze if since <= ts <= frame_ts + 0.1]
+                hits = [ts for ts, x, y in win_s if any(in_box(x, y, b) for b in boxes)]
+                if hits and len(hits) >= max(2, NOTICE_FRAC * len(win_s)):
+                    noticed = max(hits)
+                    for ts, x, y in self.gaze:              # the fixation continues while the gaze stays inside
+                        if ts <= frame_ts + 0.1:
+                            continue
+                        if not any(in_box(x, y, b) for b in boxes):
+                            break
+                        noticed = ts
+                    st.noticed_ts = max(st.noticed_ts or 0.0, noticed)
                 t["looked_at_s_ago"] = None if st.noticed_ts is None else round(max(0.0, now - st.noticed_ts), 2)
                 if trace is not None:
                     win = [(ts, x, y) for ts, x, y in self.gaze if ts >= since]

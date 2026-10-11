@@ -551,3 +551,8 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 
 ## 2026-10-10 21:00 · Prompt v2 drafted (NOT yet tested)
 - detectors.py: SYSTEM = v2 (recall-first, literal triggers, no intent/mood rejection, camera facts: wide-angle, lower image = ground, may be upside down; no red dot = unseen; calibrated urgency 0.3/0.6/0.9; triggers before reason for speed). SYSTEM_V1 kept. Default stays v1 (`detector.prompt: v2` to opt in) until the A/B: saved fist/calm frames + world_sim lion/tiger/dog, then tools/world_eval.py.
+
+## 2026-10-10 21:10 · Obstacle trigger + "noticed" = a fixation near the frame
+- Live walk: Haiku flagged boxes/chairs/table 15x but "looked at it 0.1–2.3 s ago" blocked every buzz. Two bugs: (1) memory compared gaze from up to ~1 s before the frame with the CURRENT frame's box (view moves while walking); (2) any single gaze sample (+4% margin) counted as noticing.
+- Fix: rules.TriggerMemory: gaze within 0.35 s before the frame, >=50% inside = a fixation; it then extends forward only while the gaze stays inside. GazeCache: unseen uses no margin and needs >=0.15 s inside to count as noticed. Tests: glance across box still fires; old-view gaze ignored. World sim A+B 4/4, 0 false alarms (first attempt without the forward extension broke looking_at: noticed_ts stuck at frame time, older than the 0.6 s window by Haiku latency; caught by the sim).
+- New trigger "Something in my way" (unseen, amber, 8 s cooldown). Tip: Neon Companion offset correction; gaze sat left of the phone.

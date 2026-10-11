@@ -31,6 +31,21 @@ class TestNoGaze(unittest.TestCase):
                     fired.add(d.trigger_id)
         self.assertEqual(fired, {"unseen"})
 
+    def test_noticed_needs_fixation_near_the_frame(self):
+        from spidey.rules import load_rules
+        from spidey.types import Detection
+        r = load_rules([{"id": "obs", "name": "obs", "kind": "custom", "describe": "box", "gaze_mode": "unseen",
+                         "if": {"unseen": True}, "notice_memory_s": 3.0}])
+        m = TriggerMemory()
+        for i in range(30):                                  # 1 s ago: looking at where the box is NOW (old view)
+            m.add_frame(Frame(i / 30, IMG, (0.7, 0.45), True))
+        for i in range(30, 60):                              # last second: looking elsewhere
+            m.add_frame(Frame(i / 30, IMG, (0.1, 0.9), True))
+        d = Detection(None, None, False, 0.0, 0.0, {"frame_ts": 59 / 30},
+                      triggers={"obs": {"match": True, "bbox": list(LION)}})
+        m.annotate(d, r, 2.0)
+        self.assertIsNone(d.triggers["obs"]["looked_at_s_ago"])   # old gaze in the old view doesn't count
+
 
 if __name__ == "__main__":
     unittest.main()
