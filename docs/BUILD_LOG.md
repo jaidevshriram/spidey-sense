@@ -600,3 +600,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - 22:55 · Site restyled to feel less generated: Newsreader serif headlines + Public Sans body, hairline rules instead of cards/shadows/glows/pills, text links instead of pill buttons, coral used once (the italic "what you missed"), captions as mono meta lines, notes as hairline accordions; poster is now a real frame (walking on the phone, cable on the floor).
 - 23:00 · Video removed from the site and README at the user's request (site/assets/demo.mp4 + poster deleted); the hero shows the real capture (box ahead, amber 1.7 s) beside What/How/Why; the duplicate lead scenario dropped.
 - 23:10 · Site rebuilt against "Signs of vibe coded UI" (Yuwen Lu): neutral 70/20/10 colour (coral only on the button and key phrase), no cards / icon boxes / glows / shadows / gradients, no uppercase eyebrow labels, no nested containers, no serif; hero image is the "SPIDEY SENSE!" frame from the demo cut (cable take); three more moments in a plain grid; the app; details as plain rules.
+
+## 2026-10-11 23:15 · Wrapped
+- Project wrapped. Engine stopped (Haiku, Dot link, glasses stream off). GitHub description + homepage set; STATUS.md has the final state and next steps (rotate keys).

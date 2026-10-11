@@ -1,4 +1,21 @@
-# Status (updated 2026-10-10 19:35 PT)
+# Status (final, 2026-10-11 · project wrapped)
+
+**Spidey Sense:** smart glasses that tap your wrist about things you haven't looked at. Site: https://jaidevshriram.com/spidey-sense/
+
+Final state:
+- Works live: Neon glasses → Mac over the Companion phone's 5 GHz hotspot (~90 ms); one Claude Haiku call per frame for every
+  plain-English trigger; gaze-aware firing (a ~0.2 s look counts as noticed); DataFeel Dot over Bluetooth (117 ms); iOS app
+  (why it buzzed + picture, wizard, hold-to-talk triggers via ElevenLabs + Haiku, Spidey's spoken reasons, screen mirroring);
+  walking detection from the Neon IMU; Oura heart rate via the cloud API; demo screen (/demo) + headless recorder.
+- Real takes: box ahead 1.7 s, punch 1.8 s, cable before the step (amber).
+- Not working / off: Neon microphone (hearing built, no audio); radar paused; Oura only as fresh as the ring's last sync.
+- To run again: `./scripts/engine_ble.sh --config backend/configs/config.desk.yaml` from Terminal.app (Bluetooth),
+  `./scripts/traces.sh` for /live and /demo. Keys live only in the gitignored `.env` (+ ~/.config/spidey/oura_token.json).
+- After the hackathon: rotate the Anthropic, ElevenLabs and Oura client secrets (they were pasted in chat).
+
+---
+
+# Earlier status (2026-10-10 19:35 PT)
 
 One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 
