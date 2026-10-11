@@ -548,3 +548,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - Live run: Haiku saw the fist from the first frame but called it "playful, not an attack" for 6 s (14 calls), because the person was smiling → late buzz. Not a speed problem (calls every ~0.43 s, frame→early result ~1.0 s).
 - Reworded the trigger (app-editable, backend/triggers.desk.json): "A fist, hand, arm, foot or object coming toward my face or body, or someone raising a fist, swinging or lunging at me, even if it looks playful, joking or friendly"; min_urgency 0.5 → 0.3; cooldown 60 → 5 s.
 - Offline replay of the same saved frames: recall 0/14 → 14/14 (urgency 0.3–0.8, so 0.3 matters: at 0.5 it would be 9/14); 0/8 false alarms on calm frames (people standing, holding phones). Lesson: describe the motion, not intent.
+
+## 2026-10-10 21:00 · Prompt v2 drafted (NOT yet tested)
+- detectors.py: SYSTEM = v2 (recall-first, literal triggers, no intent/mood rejection, camera facts: wide-angle, lower image = ground, may be upside down; no red dot = unseen; calibrated urgency 0.3/0.6/0.9; triggers before reason for speed). SYSTEM_V1 kept. Default stays v1 (`detector.prompt: v2` to opt in) until the A/B: saved fist/calm frames + world_sim lion/tiger/dog, then tools/world_eval.py.

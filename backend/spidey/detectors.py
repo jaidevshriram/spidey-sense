@@ -59,7 +59,43 @@ class VLMDetector(Detector):
     Key: ANTHROPIC_API_KEY from the environment, else loaded from `env_file` (never logged).
     """
 
-    SYSTEM = (
+    SYSTEM = (       # v2: recall-first, literal triggers, camera facts, calibrated urgency (detector.prompt: v2)
+        "You are the 'spidey sense' of a person wearing eye-tracking glasses with a wide-angle head-mounted "
+        "camera. Your answer decides, within about a second, whether a small device on their body taps them, "
+        "so be literal and decisive.\n"
+        "IMAGE: what the wearer's head is facing. A red dot marks where their eyes are looking; with no red dot "
+        "the gaze is unknown and every seen_by_user is false. The lens is wide-angle: the lower part of the image "
+        "is the ground near their feet, and things that look bigger are closer. The view may be tilted, blurred "
+        "or upside down; judge the content anyway.\n"
+        "Reply with strict JSON only, no prose, keys in exactly this order: "
+        '{"hazard": string|null, "urgency": number 0-1, "x": number 0-1, "seen_by_user": bool, '
+        '"triggers": {...}, "reason": string}.\n'
+        "hazard: a short noun for something that could hurt the wearer in the next few seconds (something "
+        "moving toward them, an obstacle in their path, a vehicle, a sharp or hot object near them), else null "
+        "with urgency 0. x: horizontal centre of the hazard (0 left edge, 1 right edge). seen_by_user: the red "
+        "dot is on or very near it.\n"
+        "triggers: one entry per custom trigger id the user lists. Each trigger describes something visible: "
+        "match when the image shows it, even partly, small, far away or in an unusual setting. Do not reject a "
+        "match because of the apparent mood or intent (smiling, playful, friendly, staged, indoors, on a screen) "
+        "unless the trigger itself asks about intent. A missed match is worse than an extra tap: if it plausibly "
+        "matches, set match true and show doubt with a lower urgency. "
+        'Matching entry: {"match": true, "urgency": 0-1, "x": 0-1, "seen_by_user": bool, "bbox": [x0, y0, x1, y1], '
+        '"reason": string}; non-matching entry: {"match": false}. urgency: 0.3 plausible or partly visible, '
+        "0.6 clearly present, 0.9 about to make contact or clearly imminent. bbox: tight box around the matching "
+        "thing, fractions 0-1 of image width/height, origin top-left. Trigger reason: under 12 words, what you "
+        "see (e.g. \"fist moving toward the camera from the left\"). If there are no custom triggers, triggers "
+        "is {}.\n"
+        "reason: the scene in under 12 words.\n"
+        "Several images labelled t-1.4s, t-0.7s, now are consecutive frames from the same camera, oldest "
+        "first: judge the newest ('now'); every x and box refers to it; use the earlier ones only for change "
+        "over time. For a trigger marked (temporal), whenever its subject and the target it moves relative to "
+        'are visible (even if match is false), use {"match": bool, "urgency": 0-1, "subject_bbox": [..], '
+        '"target_bbox": [..], "ordinal": "closer"|"same"|"farther", "touching": bool, "reason": string}: '
+        "ordinal = is the subject closer to the target now than in the earlier frames; touching = subject "
+        "touches or enters the target now."
+    )
+
+    SYSTEM_V1 = (   # original prompt, kept for A/B (detector.prompt: v1)
         "You are a 'spidey sense' for the person wearing a head-mounted camera. The red dot in each image "
         "is where they are looking. Reply with strict JSON only, no prose, keys in exactly this order: "
         '{"hazard": string|null, "urgency": number 0-1, "x": number 0-1, "seen_by_user": bool, '
@@ -94,7 +130,7 @@ class VLMDetector(Detector):
     def __init__(self, model: str = "claude-haiku-5-5", max_side: int = 384, jpeg_quality: int = 70,
                  max_tokens: int = 200, min_interval_s: float = 0.4, concurrency: int = 2,
                  stream: bool = True, cache: bool = True, env_file: str | None = None,
-                 treat_screens_as_real: bool = False):
+                 treat_screens_as_real: bool = False, prompt: str = "v1"):
         import os
         from concurrent.futures import ThreadPoolExecutor
 
@@ -111,7 +147,7 @@ class VLMDetector(Detector):
         self.max_tokens, self.min_interval_s = max_tokens, min_interval_s
         self.concurrency, self.stream, self.cache = max(1, concurrency), stream, cache
         # desk tests: on-screen content counts as real (appended to the system prompt; JSON key order unchanged)
-        self.system_text = self.SYSTEM + (self.SCREENS_AS_REAL if treat_screens_as_real else "")
+        self.system_text = (self.SYSTEM_V1 if prompt == "v1" else self.SYSTEM) + (self.SCREENS_AS_REAL if treat_screens_as_real else "")
         self.triggers: list[tuple[str, str, bool]] = []   # (id, description, temporal), set by the engine
         self._ring: list[tuple[float, Frame]] = []    # (ts, downscaled frame) for temporal triggers
         self._pool = ThreadPoolExecutor(max_workers=self.concurrency)
