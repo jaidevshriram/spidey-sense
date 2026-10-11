@@ -194,3 +194,10 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   (22 calls, **median 903 ms, p90 1203 ms**, 0 errors), and the iOS `xcodegen generate` + simulator build: **BUILD SUCCEEDED**.
 - BLE test from the new location: **not yet**. DataFeelCE wasn't advertising because the playground Jaidev
   started at 17:09 (from the old folder) holds the BLE link. Rerun `./scripts/ble_test.sh` after closing it.
+
+### 17:12 Haptic Playground confirmed on hardware
+- Jaidev ran the playground (from the old folder, 17:09) over Bluetooth: "works and is great".
+
+### 17:24 README upkeep
+- Added `CLAUDE.md` (repo rule: update README.md + docs/BUILD_LOG.md in the same change) and a
+  "Keeping this README current" section in the README, per Jaidev.

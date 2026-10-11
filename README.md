@@ -76,6 +76,11 @@ signing team, run, and set the server URL to `ws://<mac-ip>:8765` in Settings.
 | Bluetooth connect + discover | 4–5 s |
 | Claude Haiku 5.5 per frame (512 px) | 0.9–1.0 s median, 1.2–1.4 s p90 |
 
+## Keeping this README current
+
+Every change that adds or changes a feature, command, folder, config option or measurement updates this README
+in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CLAUDE.md`).
+
 ## Credits
 
 - **DataFeel** devkit Python SDK (MIT), vendored in `haptics/vendor/datafeel-python`. The BLE protocol was identified
