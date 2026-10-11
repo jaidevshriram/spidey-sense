@@ -478,3 +478,17 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   match 19:03:41 ("Tiger visible in image on laptop screen") with gaze outside the box → not fired (lion_unnoticed fired).
   First big_cat_look fire 19:04:09 (gaze in box 0.18 s before decision, frame→result 1.63 s).
 
+
+### 19:20–19:35 Gaze cache wired in + scored world-sim evaluation (all green)
+- `spidey/gaze_cache.py` wired into `engine.run`: every frame, the gaze is checked against Haiku's cached boxes for non-temporal
+  custom triggers (looking_at: 0.2 s dwell; unseen: 0.3 s grace + notice memory); boxes come from each full result
+  (matched and ≥ min_urgency). Fixes found in sims:
+  (1) validity counted from the result's ARRIVAL (Haiku takes 1.5–1.8 s, so frame-age TTL 1.5 s meant always stale; plus a 4 s frame cap);
+  (2) results about frames from before a view change are ignored (late answers re-added old boxes);
+  (3) noticed memory seeded from the engine's gaze history (`looked_at_s_ago`), so a look before the box arrived counts;
+  (4) Haiku-path decisions are stale if the view changed after their frame (`ctx.view_changed_ts`).
+- `tools/world_scene.py`: world-style frames (picture/lake full-bleed + a street sign, mild camera realism, no monitor),
+  so Haiku stops saying "on a monitor". `tools/world_eval.py` (scored, parallel, real-time per run) +
+  `tools/world_eval_report.py` (timeline strips: expected windows, gaze lane, Haiku ticks, buzz markers, verdict badges).
+- A harness bug (the scripted gaze looped every 10 s) caused D2 "false alarms"; fixed with `gaze_period`.
+- Result: A/B/C/D1/D2 all 3/3, 0 false alarms, gaze-cache reaction 0.24 s median after the gaze lands.

@@ -1,4 +1,4 @@
-# Status (updated 2026-10-10 19:06 PT)
+# Status (updated 2026-10-10 19:35 PT)
 
 One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 
@@ -22,6 +22,20 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 | App on Jaidev's iPhone ("Riptide") with a spider-web icon | this push | signed with his team; connects to the engine via Bonjour |
 | Haptic Playground (web) | | `./scripts/playground.sh` |
 | Per-call Haiku traces + viewer, app "Live decisions", staleness gate (2.5 s), decision-time gaze check, temporal "farther" veto, `treat_screens_as_real` for desk configs, Senses locked offline | uncommitted | `./scripts/traces.sh` → :8096 (+ `/live`); takes effect when the engine restarts |
+
+
+## Latest: world-sim evaluation (19:33 PT): ALL GREEN
+Real Haiku, world-style frames (no monitor, `tools/world_scene.py`), the real engine path incl. the gaze cache, 3 reps each,
+parallel. `python3 tools/world_eval.py --reps 3` → `vlm/world_eval_results.md`; report `logs/reports/world_eval.html`.
+
+| Scenario | Result |
+|---|---|
+| A big_cat_look: look at the lion → buzz; dog / tiger-while-reading → none | 3/3 every segment; **buzz 0.24 s after the gaze lands** (gaze cache) |
+| B lion_unnoticed: looking → quiet; reading the sign → buzz once the 3 s memory ends; dog → none | 3/3 every segment (fires at exactly 9.0 s) |
+| C person_to_water: far → none; near the edge → buzz; walking back → none | 3/3, frame→buzz ~1.5 s (Haiku path) |
+| D1 unwatched + reading the sign → buzz near the edge | 3/3 |
+| D2 unwatched + watching the person → never | 3/3 |
+False alarms: **0**. Gaze-cache decision → buzz: ~3 ms after the gaze sample (+ BLE ~117 ms on hardware).
 
 ## In progress
 - **Oura heart-rate sense** (stub + replay/fake backends + app template/card; live ring needs re-pairing at home, see `docs/oura.md` when it lands).

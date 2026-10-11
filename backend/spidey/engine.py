@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 import threading
 import time
@@ -20,6 +21,8 @@ from . import heart as H
 from . import rules as R
 from . import trace as T
 from .detectors import make_detector
+from .gaze_cache import GazeCache
+from .types import Detection
 from .server import EventServer
 from .sinks import make_sink
 from .sources import make_source
@@ -642,6 +645,63 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
     print(f"source={type(source).__name__} detector={type(detector).__name__} "
           f"sink={type(sink).__name__} rules={[r.name for r in ctl.active_rules()]}  log={log_path}")
 
+    gc_cfg = cfg.get("gaze_cache", {}) or {}
+    gcache = GazeCache(ttl_s=gc_cfg.get("ttl_s", 1.5), dwell_s=gc_cfg.get("dwell_s", 0.2),
+                       grace_s=gc_cfg.get("grace_s", 0.3)) if gc_cfg.get("enabled", True) else None
+    ctl.gaze_cache = gcache
+
+    def gaze_rules():
+        return [r for r in ctl.active_rules() if r.kind == "custom" and r.source in R.VISION_SOURCES
+                and not r.temporal and r.effective_gaze_mode in ("looking_at", "unseen")]
+
+    def gaze_cache_step(frame):
+        """Per frame: gaze vs Haiku's cached boxes -> fire gaze triggers without waiting for the next call."""
+        g = frame.gaze_xy
+        if gcache is None or g is None:
+            return
+        h, w = frame.image.shape[:2]
+        gx, gy = (g if frame.gaze_norm else (g[0] / w, g[1] / h))
+        small = cv2.resize(cv2.cvtColor(frame.image, cv2.COLOR_BGR2GRAY), (32, 24), interpolation=cv2.INTER_AREA)
+        gcache.motion(small, frame.ts)
+        rules = {r.id: r for r in gaze_rules()}
+        if os.environ.get("DEBUG_GC") and int(frame.ts * 2) % 2 == 0 and abs(frame.ts * 2 - int(frame.ts * 2)) < 0.05:
+            print(f"[gc] rules={list(rules)} entries={ {k: (round(frame.ts - e.frame_ts, 2), e.box) for k, e in gcache.entries.items()} } gaze=({gx:.2f},{gy:.2f}) inval={gcache.invalid_reason!r}", flush=True)
+        if not rules or not gcache.entries:
+            return
+        now = time.time()
+        for d in gcache.on_gaze(gx, gy, frame.ts, [(r.id, r.effective_gaze_mode, r.notice_memory_s)
+                                                   for r in rules.values()]):
+            r = rules.get(d.trigger_id)
+            if not d.fire or r is None or now - r._last < r.cooldown_s:
+                continue
+            reason = f"{d.label or r.name}; {d.why} [gaze cache, box {d.box_age_s:.1f} s old]"
+            fake = Detection(None, None, r.effective_gaze_mode == "looking_at", d.urgency, 0.0,
+                             {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "gaze_cache": True},
+                             reason=reason,
+                             triggers={r.id: {"match": True, "urgency": d.urgency, "bbox": list(d.box),
+                                              "reason": reason, "looked_at_s_ago": d.looked_at_s_ago}})
+            fake.frame = frame
+            ev = r._fire(fake, now)
+            ev.extra["fast"] = "gaze_cache"
+            logged = ctl.emit([ev], fake, t_start)
+            log.write(json.dumps({"ts": {"frame": frame.ts, "sent": time.time()}, "gaze_cache": True,
+                                  "events": logged, "e2e_ms": round((time.time() - frame.ts) * 1000, 1)}) + "\n")
+
+    def gaze_cache_update(det, rules):
+        """Each full Haiku result refreshes the boxes (matched + urgent enough) or drops them."""
+        if gcache is None or det.raw.get("early"):
+            return
+        fts = det.raw.get("frame_ts", time.time())
+        for r in rules:
+            if r.kind != "custom" or r.temporal or r.effective_gaze_mode not in ("looking_at", "unseen"):
+                continue
+            t = det.triggers.get(r.id) or {}
+            ok = bool(t.get("match")) and float(t.get("urgency") or 0) >= r.if_.get("min_urgency", 0.0)
+            now = time.time()
+            ago = t.get("looked_at_s_ago")
+            gcache.update(r.id, t.get("bbox"), fts, ok, (t.get("reason") or "")[:80], float(t.get("urgency") or 0),
+                          result_ts=now, noticed_ts=None if ago is None else now - float(ago))
+
     t_start, last_detect, prev_hazard = time.time(), 0.0, None
     try:
         with open(log_path, "a") as log:
@@ -651,6 +711,7 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
             for frame in source.frames():
                 ctl.note_frame(frame)
                 ctl.memory.add_frame(frame)          # gaze history for looked_at_s_ago
+                gaze_cache_step(frame)               # fast path: gaze vs cached Haiku boxes, every frame
                 if tracer and frame.ts - last_live >= live_every:
                     last_live = frame.ts
                     tracer.live(frame, live_state(ctl, frame, last_call, last_decision))
@@ -675,7 +736,9 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                 full = not det.raw.get("early")
                 gaze_tr = {} if full else None
                 ctl.memory.annotate(det, rules, t_detected, gaze_tr)     # real gaze vs boxes, temporal trends
-                ctx = {"max_result_age_s": max_age, "gaze_now": ctl.memory.newest_gaze()}
+                gaze_cache_update(det, rules)
+                ctx = {"max_result_age_s": max_age, "gaze_now": ctl.memory.newest_gaze(),
+                       "view_changed_ts": gcache.invalidated_ts if gcache else None}
                 events, decisions = R.apply_explained(rules, det, t_detected, ctx)
                 state = (det.hazard, det.seen_by_user)
                 if state != prev_hazard:

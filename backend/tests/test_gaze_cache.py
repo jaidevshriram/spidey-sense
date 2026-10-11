@@ -64,5 +64,14 @@ class TestGazeCache(unittest.TestCase):
         self.assertEqual(fired, {})
 
 
+    def test_late_result_from_old_view_ignored(self):
+        a = np.zeros((24, 32), np.uint8)
+        self.c.motion(a, 0.0)
+        self.c.motion(a + 80, 5.0)                                      # view changes at t=5
+        self.c.update("look", LION, 4.0, True, result_ts=5.5)          # Haiku's answer about a t=4 frame arrives late
+        fired, _ = run(self.c, [(0.7, 0.45, 60)], t0=5.6)
+        self.assertEqual(fired, {})
+
+
 if __name__ == "__main__":
     unittest.main()

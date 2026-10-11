@@ -99,6 +99,7 @@ Mac's clock with Pupil Labs Time Echo, so `e2e_ms` in the log is glasses capture
 # radar later: start ~/Downloads/radar-lab/server.py, then use backend/configs/config.desk_radar.yaml
 ./scripts/desk_test.sh prerun              # dry runs on simulated scenes + scripted gaze (real Haiku)
 ./scripts/desk_test.sh check               # offline engine checks
+python3 tools/world_eval.py --reps 3      # scored world-sim eval (A–D) → vlm/world_eval_results.md, logs/reports/world_eval.html
 ```
 **Traces: why did (or didn't) it fire?** Every engine run records each Haiku call to `backend/logs/runs/<time>-<config>/`
 (the exact JPEGs sent with the gaze dot, prompt, raw reply, timings, tokens, the gaze samples used, and per trigger
@@ -140,6 +141,7 @@ chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
 | El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |
 | Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
 | Desk dry runs A–D (sim scene, scripted gaze, real Haiku, 512 px) | all pass; frame→fire 1.2–1.3 s (single image), 1.5–1.65 s (temporal, 3 images) |
+| World-sim A–D (3 reps, real Haiku, gaze cache) | all pass, 0 false alarms; **gaze lands → buzz 0.24 s** (cached boxes), new object → buzz ~1.5 s (Haiku) |
 | Radar frame → cue | ~29 ms median (radar-lab) + ~4 ms server→sense; + ~117 ms BLE buzz ≈ 0.15 s |
 
 ## Keeping this README current

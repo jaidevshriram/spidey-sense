@@ -152,6 +152,9 @@ class Rule:
             frame_ts = d.raw.get("frame_ts")
             if max_age and frame_ts and now - frame_ts > max_age:
                 ok, why = False, f"stale: result {now - frame_ts:.1f} s old (max {max_age:g} s)"
+            vc = ctx.get("view_changed_ts")
+            if ok and vc and frame_ts and frame_ts < vc and not self.temporal:
+                ok, why = False, f"stale: the view changed {now - vc:.1f} s ago, after this frame"
         if ok and "gaze_now" in ctx and self.effective_gaze_mode == "looking_at" and t is not None \
                 and not self.temporal and t.get("bbox"):
             g = ctx["gaze_now"]
