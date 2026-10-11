@@ -649,7 +649,7 @@ struct FeedbackMessage: Encodable {
     enum CodingKeys: String, CodingKey { case type, ts, verdict, eventId = "event_id" }
 }
 
-enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", setIntensity = "set_intensity", quiet, pause }
+enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", resetDot = "reset_dot", setIntensity = "set_intensity", quiet, pause }
 
 /// Small JSON value for command args.
 enum JSONValue: Encodable, Hashable {
@@ -672,6 +672,8 @@ struct CommandMessage: Encodable {
 
     static func testPattern(_ p: String) -> Self { .init(name: .testPattern, args: ["pattern": .string(p)]) }
     static let stopAll = Self(name: .stopAll)
+    /// Back to baseline: LED off, vibration stopped, thermal off.
+    static let resetDot = Self(name: .resetDot)
     static func setIntensity(_ v: Double) -> Self { .init(name: .setIntensity, args: ["value": .number(v)]) }
     static func quiet(_ on: Bool) -> Self { .init(name: .quiet, args: ["on": .bool(on)]) }
     /// v3: while paused, detection keeps running for the Log but nothing reaches the Dot.

@@ -449,6 +449,9 @@ class Controller:
                 self.sink.play(pattern, args.get("dot"))
             self.last_play_ts = time.time()
             ack["detail"] = f"played {pattern}"
+        elif name == "reset_dot":
+            r = self.haptics.baseline("reset button", thermal=True) if self.haptics else {"ok": True}
+            ack.update(ok=r["ok"], detail="Dot reset: LED off, vibration stopped, thermal off", ms=r.get("ms"))
         elif name == "stop_all":
             r = self.haptics.stop_all("stop_all") if self.haptics else {"ok": True}
             ack.update(ok=r["ok"], detail="vibration, thermal and LEDs off", ms=r.get("ms"))
@@ -485,7 +488,7 @@ class Controller:
         server.add_periodic(2.0, self.status_msg)
         if self.haptics:
             for kind in ("haptic.led", "haptic.vibe.sequence", "haptic.vibe.manual", "haptic.preset",
-                         "haptic.thermal", "haptic.stop_all", "haptic.subscribe", "link.ping"):
+                         "haptic.thermal", "haptic.stop_all", "haptic.reset", "haptic.subscribe", "link.ping"):
                 server.on(kind, self.on_haptic)
             self.haptics.on_telemetry = server.broadcast
             self.haptics.on_system = self.system_event
@@ -527,6 +530,8 @@ class Controller:
             r = h.thermal_set(msg.get("on", True), msg.get("intensity"), msg.get("target_c"), addr)
         elif kind == "haptic.stop_all":
             r = h.stop_all("stop_all")
+        elif kind == "haptic.reset":
+            r = h.baseline("reset button", thermal=True)
         else:
             return {"type": "ack", "for": kind, "ok": False, "error": "unknown haptic message"}
         print(f"haptic: {kind} -> {'ok' if r.get('ok') else r.get('error')} {r.get('ms')} ms", flush=True)

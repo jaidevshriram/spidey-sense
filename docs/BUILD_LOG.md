@@ -429,3 +429,11 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   Log rows `HR 104 (median 71, +33) · 12 s`. Sample data for all. Screenshots `ios/screenshots/oura-{editor,devices,log,senses}.png`.
 - Docs: `docs/oura.md` (what open_oura is, why not the cloud API, at-home reset → pair → .env → live bpm → engine steps, risks),
   protocol "Heart rate (Oura)".
+
+### 19:02 Live desk test A, first attempt: no buzz (cause: the trigger was never enabled) + Dot baseline
+- Engine log: every Haiku call had `n_triggers 0` ("person typing at laptop, no hazards"). `big_cat_look` was never enabled in
+  the engine: the app's toggle was flipped while it was disconnected (the engine had just restarted), so it only changed its
+  offline sample list. Fixed by enabling it via `rules.upsert`; the app will now block edits while offline (traces agent).
+- The Dot's "blue" = its own idle breathe mode. New baseline (LED off, vibration stopped): on engine start, ~1.5 s after every
+  cue/ping/test pattern (thermal holds untouched), and via `command reset_dot` / `haptic.reset` (also turns thermal off).
+  App: "Reset Dot" on the Haptics tab + the El Jefe card. Installed on Riptide.

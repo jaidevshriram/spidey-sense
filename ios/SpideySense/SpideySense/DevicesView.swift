@@ -40,7 +40,10 @@ struct DevicesView: View {
                     }
                     TimelineView(.periodic(from: .now, by: 1)) { ctx in
                         VStack(spacing: 12) {
-                            ForEach(cards) { DeviceCard(device: $0, now: ctx.date) }
+                            ForEach(cards) { c in
+                                DeviceCard(device: c, now: ctx.date,
+                                           onReset: c.id == "el_jefe" ? { stream.command(.resetDot) } : nil)
+                            }
                         }
                     }
                     if let t = stream.devicesUpdatedAt, !stream.devicesAreSample {
@@ -61,6 +64,7 @@ struct DevicesView: View {
 struct DeviceCard: View {
     let device: DeviceInfo
     let now: Date
+    var onReset: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -94,6 +98,11 @@ struct DeviceCard: View {
                     }
                 }
                 Text(lastSeen).font(.caption).foregroundStyle(.tertiary)
+                if let onReset {
+                    Button { onReset() } label: { Label("Reset Dot", systemImage: "arrow.counterclockwise") }
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .accessibilityHint("LED off, vibration stopped, thermal off")
+                }
             }
         }
         .padding()

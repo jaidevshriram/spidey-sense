@@ -324,6 +324,18 @@ struct HapticsView: View {
     // MARK: - STOP ALL
 
     private var stopBar: some View {
+        HStack(spacing: 10) {
+        Button {
+            tapFeedback(.medium)
+            stream.command(.resetDot)
+            manualOn = false
+            ledColors = Array(repeating: nil, count: 8)
+        } label: {
+            Label("Reset Dot", systemImage: "arrow.counterclockwise")
+                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityHint("Back to baseline: LED off, vibration stopped, thermal off")
         Button {
             tapFeedback(.heavy)
             stream.haptic(HapticStopAll(), label: "haptic.stop_all")
@@ -335,6 +347,7 @@ struct HapticsView: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 6)
         }
         .buttonStyle(.borderedProminent).tint(.red)
+        }
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)
         .accessibilityHint("Vibration, thermal and LEDs off")

@@ -138,9 +138,12 @@ class HapticControl:
         self.on_telemetry: Callable[[dict], None] | None = None   # set by the engine (broadcast)
         self.on_system: Callable[[str, str], None] | None = None  # (level, text) for link drops
         self._stop = threading.Event()
+        self.baseline_after_s = 1.5          # cue/ping/test ends -> back to baseline (LED off, no vibration)
+        self._baseline_timer: threading.Timer | None = None
         if not mock:
             with self.lock:
                 fastfire.prepare(self.dots)
+            self.baseline("engine start")   # a Dot idles in blue "breathe" mode: start from a known state
         threading.Thread(target=self._watchdog, daemon=True).start()
 
     @classmethod
@@ -184,6 +187,35 @@ class HapticControl:
                     d.registers.set_global_led(*rgb)
         r = self._run(f"pattern:{name}", go)
         r["intensity"] = round(self.intensity * scale, 3)
+        self.schedule_baseline(self._seq_seconds(scaled))
+        return r
+
+    # ---- baseline: LED off, vibration stopped (thermal untouched unless reset) -----------
+    @staticmethod
+    def _seq_seconds(seq) -> float:
+        """Rough playing time of a library sequence: rests are exact, waveforms ~0.25 s."""
+        return sum(((c - 0x80) / 100.0) if c >= 0x80 else 0.25 for c in seq)
+
+    def schedule_baseline(self, after_s: float = 0.0) -> None:
+        if self._baseline_timer:
+            self._baseline_timer.cancel()      # latest cue wins
+        self._baseline_timer = threading.Timer(max(0.0, after_s) + self.baseline_after_s,
+                                               lambda: self.baseline("after cue"))
+        self._baseline_timer.daemon = True
+        self._baseline_timer.start()
+
+    def baseline(self, reason: str = "reset", thermal: bool = False) -> dict:
+        """LED off + vibration stopped. Thermal is left alone (a hold the user started) unless thermal=True."""
+        if thermal:
+            self.thermal_off(reason)
+
+        def go():
+            for d in self.dots:
+                d.stop_vibration()
+                d.registers.set_vibration_mode(VibrationMode.LIBRARY)
+                d.set_led_off()
+        r = self._run("baseline", go)
+        r["reason"] = reason
         return r
 
     # ---- playground controls -------------------------------------------------------------
@@ -367,7 +399,7 @@ class HapticControl:
             t0 = time.perf_counter()
             self.led("global", (0, 255, 0))
             flash_ms = round((time.perf_counter() - t0) * 1000, 1)
-            threading.Timer(0.5, lambda: self._run("flash_off", lambda: [d.set_led_off() for d in self.dots])).start()
+            self.schedule_baseline(0.5 - self.baseline_after_s)   # green for 0.5 s, then baseline
         return {"health": h, "flash_ms": flash_ms}
 
     def link_info(self) -> dict:
