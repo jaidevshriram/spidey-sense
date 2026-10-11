@@ -164,11 +164,43 @@ class NeonSource(GazeFrameSource):
         self.max_frame_age_ms, self.keep_every = max_frame_age_ms, keep_every
         self._dropped, self._drop_run = 0, 0
         self.min_yield_s, self._last_yield = 0.25, 0.0
+        # IMU (realtime only): walking / head turning, on its own thread so it never slows the frame loop
+        from .motion import WalkDetector
+        self.walk = WalkDetector()
+        self._imu_err = None
+        if mode == "realtime" and getattr(self._src, "device", None) is not None:
+            import threading
+            threading.Thread(target=self._imu_loop, name="neon-imu", daemon=True).start()
+
+    def _imu_loop(self) -> None:
+        dev, off = self._src.device, float(getattr(self._src, "clock_offset_s", 0.0))
+        n = 0
+        while True:
+            try:
+                d = dev.receive_imu_datum(timeout_seconds=2)
+            except Exception as e:          # Companion without IMU streaming, link lost, ...
+                if self._imu_err is None:
+                    print(f"[neon] IMU unavailable ({type(e).__name__}: {e}); walking = unknown", flush=True)
+                self._imu_err = str(e)
+                time.sleep(2)
+                continue
+            if d is None:
+                continue
+            g = d.gyro_data
+            a = d.accel_data
+            self.walk.add(d.timestamp_unix_seconds + off, (a.x, a.y, a.z) if hasattr(a, "x") else tuple(a),
+                          (g.x, g.y, g.z) if hasattr(g, "x") else tuple(g))
+            n += 1
+            if n == 1:
+                print("[neon] IMU streaming (walking detection on)", flush=True)
+
+    def motion(self) -> dict:
+        return self.walk.state(time.time())
 
     def stats(self) -> dict:
         """worn / battery / delay_ms for the app's status message. Battery comes from the Companion's
         status updates (realtime mode only); read at most every 10 s."""
-        out = {"mode": self.mode, "worn": self._worn, "delay_ms": self._delay_ms}
+        out = {"mode": self.mode, "worn": self._worn, "delay_ms": self._delay_ms, **self.motion()}
         dev = getattr(self._src, "device", None)
         if dev is not None:
             checked, pct = self._battery

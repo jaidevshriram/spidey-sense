@@ -601,7 +601,9 @@ def live_state(ctl: Controller, frame, last_call: dict, last_decision: dict) -> 
                      "state": state, "why": d.get("why"), "matched": d.get("matched"), "fired_ts": d.get("fired_ts"),
                      "bbox": box, "target_bbox": d.get("target_bbox"), "hint": hint,
                      "box_age_s": round(now - d["frame_ts"], 2) if d.get("frame_ts") else None})
-    return {"frame_ts": frame.ts, "now": now, "frame_age_s": round(now - frame.ts, 3), "gaze": gnow,
+    mo = getattr(ctl.source, "motion", None)
+    motion = mo() if callable(mo) else {}
+    return {"frame_ts": frame.ts, "now": now, "frame_age_s": round(now - frame.ts, 3), "gaze": gnow, "motion": motion,
             "trail": trail, "paused": ctl.paused, "quiet": ctl.quiet,
             "last_call": {**last_call, "age_s": round(now - last_call["frame_ts"], 2)} if last_call else None,
             "triggers": trig}
@@ -656,6 +658,10 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                        grace_s=gc_cfg.get("grace_s", 0.3)) if gc_cfg.get("enabled", True) else None
     ctl.gaze_cache = gcache
 
+    def motion_now() -> dict:
+        m = getattr(source, "motion", None)
+        return m() if callable(m) else {}
+
     def gaze_rules():
         return [r for r in ctl.active_rules() if r.kind == "custom" and r.source in R.VISION_SOURCES
                 and not r.temporal and r.effective_gaze_mode in ("looking_at", "unseen")]
@@ -680,6 +686,14 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                                                    for r in rules.values()]):
             r = rules.get(d.trigger_id)
             if not d.fire or r is None or now - r._last < r.cooldown_s:
+                continue
+            if r.if_.get("only_while_walking") and motion_now().get("walking") is False:
+                continue
+            st = ctl.memory.states.get(r.id)
+            ttc = None
+            if st is not None and st.ttc_s is not None and st.ttc_at is not None and frame.ts - st.ttc_at < 1.5:
+                ttc = max(0.0, st.ttc_s - (frame.ts - st.ttc_at))      # last estimate, aged to now
+            if r.if_.get("max_ttc_s") is not None and (ttc is None or ttc > float(r.if_["max_ttc_s"])):
                 continue
             reason = f"{d.label or r.name}; {d.why} [gaze cache, box {d.box_age_s:.1f} s old]"
             fake = Detection(None, None, r.effective_gaze_mode == "looking_at", d.urgency, 0.0,
@@ -751,7 +765,8 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                 ctl.memory.annotate(det, rules, t_detected, gaze_tr)     # real gaze vs boxes, temporal trends
                 gaze_cache_update(det, rules)
                 ctx = {"max_result_age_s": max_age, "gaze_now": ctl.memory.newest_gaze(),
-                       "view_changed_ts": gcache.invalidated_ts if gcache else None}
+                       "view_changed_ts": gcache.invalidated_ts if gcache else None,
+                       "walking": motion_now().get("walking")}
                 events, decisions = R.apply_explained(rules, det, t_detected, ctx)
                 state = (det.hazard, det.seen_by_user)
                 if state != prev_hazard:

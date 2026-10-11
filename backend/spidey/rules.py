@@ -164,6 +164,15 @@ class Rule:
                 ok, why = False, "gaze left the box (no gaze sample now)"
             elif not in_box(g[1], g[2], t["bbox"]):
                 ok, why = False, f"gaze left the box (gaze now at {g[1]:.2f},{g[2]:.2f})"
+        if ok and self.if_.get("only_while_walking") and ctx.get("walking") is False:
+            ok, why = False, "not walking (only while walking)"
+        mt = self.if_.get("max_ttc_s")
+        if ok and mt is not None and t is not None and not self.temporal:
+            ttc = t.get("ttc_s")
+            if ttc is None:
+                ok, why = False, "not approaching it (no time-to-contact yet)"
+            elif ttc > float(mt):
+                ok, why = False, f"reaching it in {ttc:.1f} s (> {float(mt):g} s)"
         if ok and now - self._last < self.cooldown_s:
             ok, why = False, f"cooldown {self.cooldown_s - (now - self._last):.1f} s left"
         rec = {"id": self.id, "name": self.name, "fired": ok, "matched": matched, "why": "fired" if ok else why,
@@ -186,6 +195,11 @@ class Rule:
             text = f"{self.name}: {why}"
             if "looked_at_s_ago" in t:
                 extra["looked_at_s_ago"] = t["looked_at_s_ago"]
+            if t.get("ttc_s") is not None:
+                extra["ttc_s"] = t["ttc_s"]
+                why = f"{why} (about {t['ttc_s']:.1f} s away)"
+                text = f"{self.name}: {why}"
+
             box = t.get("subject_bbox") if self.temporal else t.get("bbox")
             if box:
                 extra["bbox"] = box
@@ -398,6 +412,25 @@ def in_box(x: float, y: float, b, m: float = BOX_MARGIN) -> bool:
     return b[0] - m <= x <= b[2] + m and b[1] - m <= y <= b[3] + m
 
 
+def time_to_contact(hist, frame_ts: float, box) -> float | None:
+    """Seconds until the wearer reaches the boxed thing, from how fast it grows in the view (looming:
+    tau = size / d(size)/dt, size = sqrt(box area)). Relative only: no distances. Uses earlier boxes of the
+    same thing (overlapping, 0.3-2.5 s older); None if it isn't growing (not approaching) or no history."""
+    s = math.sqrt(max(1e-6, (box[2] - box[0]) * (box[3] - box[1])))
+    ests = []
+    for ts0, b0 in hist:
+        dt = frame_ts - ts0
+        if not 0.3 <= dt <= 2.5 or iou(b0, box) < 0.1:
+            continue
+        s0 = math.sqrt(max(1e-6, (b0[2] - b0[0]) * (b0[3] - b0[1])))
+        if s > s0 * 1.03:
+            ests.append(s * dt / (s - s0))
+    if not ests:
+        return None
+    ests.sort()
+    return ests[len(ests) // 2]
+
+
 @dataclass
 class TriggerState:
     """Rolling memory of one custom trigger: when it matched, when the gaze was last on it, and (temporal)
@@ -410,6 +443,9 @@ class TriggerState:
     closer_streak: int = 0
     armed: bool = True
     fired_gap: float | None = None
+    boxes: deque = field(default_factory=lambda: deque(maxlen=10))   # (frame_ts, box) of recent matches
+    ttc_s: float | None = None           # time to contact at ttc_at (frame time), from box growth
+    ttc_at: float | None = None
 
     def reset_track(self) -> None:
         self.ticks.clear()
@@ -472,6 +508,11 @@ class TriggerMemory:
                 t["bbox"] = b
                 boxes = [b] if b else []
                 present = bool(t.get("match"))
+                if present and b:
+                    ttc = time_to_contact(st.boxes, frame_ts, b)
+                    st.boxes.append((frame_ts, b))
+                    st.ttc_s, st.ttc_at = ttc, frame_ts
+                    t["ttc_s"] = None if ttc is None else round(max(0.0, ttc - (now - frame_ts)), 2)
             # -- match streak + gaze "noticed" memory --------------------------------------
             if present:
                 if st.last_match is None or frame_ts - st.last_match > MATCH_GAP_S:
