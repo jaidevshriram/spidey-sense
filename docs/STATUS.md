@@ -75,3 +75,4 @@ Desk tests A–E: see README "Desk tests" (page `./scripts/desk_test.sh`, engine
 - Desk test hit/miss table (A–D + radar)
 
 - Network: Neon video over the phone hotspot lags 1–3 s in bursts (even with Haiku off). Engine now degrades to >=4 fps instead of stalling. `HAIKU_OFF=1 ./scripts/engine_ble.sh ...` starts with Haiku paused; live view is 1280 px.
+- **Hotspot must be 5 GHz** (2.4 GHz gave 1–3 s video lag); on 5 GHz the video arrives in ~90 ms.

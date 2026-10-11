@@ -533,3 +533,7 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 
 ## 2026-10-10 20:35 · Spidey triggers list sorting
 - One list, no "Always on" heading: active triggers first, then off; your own before built-ins within each group; toggling animates the row into place. Suggested templates stay at the bottom.
+
+## 2026-10-10 20:40 · Hotspot on 5 GHz
+- Companion phone hotspot switched 2.4 → 5 GHz. Neon capture→Mac age: median ~90 ms, p90 ~120 ms (was median 0.5–1.8 s, p90 up to 3 s). Live view: 0 gaps in 60 s, max 0.17 s stale. Holds with Haiku on (median call 1.1 s, frame→decision 1.2 s). Engine reconnected to the Companion on its own after the network change.
+- **Demo checklist: hotspot band = 5 GHz.**
