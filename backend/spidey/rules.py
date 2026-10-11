@@ -148,12 +148,14 @@ class Rule:
         t = d.triggers.get(self.id) if self.kind == "custom" else None
         matched = bool(d.hazard) if self.kind != "custom" else bool((t or {}).get("match") or (t or {}).get("trend_fire"))
         if ok:
-            max_age = ctx.get("max_result_age_s")
+            # per trigger (if.max_age_s / if.keep_on_view_change): static things like obstacles are still there
+            # after 3 s or a head turn; fast things (a fist) are not
+            max_age = self.if_.get("max_age_s") or ctx.get("max_result_age_s")
             frame_ts = d.raw.get("frame_ts")
             if max_age and frame_ts and now - frame_ts > max_age:
                 ok, why = False, f"stale: result {now - frame_ts:.1f} s old (max {max_age:g} s)"
             vc = ctx.get("view_changed_ts")
-            if ok and vc and frame_ts and frame_ts < vc and not self.temporal:
+            if ok and vc and frame_ts and frame_ts < vc and not self.temporal and not self.if_.get("keep_on_view_change"):
                 ok, why = False, f"stale: the view changed {now - vc:.1f} s ago, after this frame"
         if ok and "gaze_now" in ctx and self.effective_gaze_mode == "looking_at" and t is not None \
                 and not self.temporal and t.get("bbox"):
