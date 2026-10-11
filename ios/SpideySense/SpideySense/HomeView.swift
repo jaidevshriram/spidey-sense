@@ -31,7 +31,6 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
-                    SensesStrip(stream: stream, now: now, sample: showingSample)
                     if all.isEmpty {
                         EmptyHome().padding(.top, 40)
                     } else {
@@ -62,6 +61,10 @@ struct HomeView: View {
                             }
                             .id("earlier")
                         }
+                    }
+                    // quiet context at the bottom, not the headline: heart rate, glasses, hearing
+                    SensesStrip(stream: stream, now: now, sample: showingSample)
+                    if !all.isEmpty {
                         if showingSample {
                             Text("These are examples. When your Spidey hub is connected, your real alerts show up here.")
                                 .font(.footnote).foregroundStyle(Theme.inkSecondary)
