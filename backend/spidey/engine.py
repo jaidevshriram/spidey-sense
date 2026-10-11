@@ -103,6 +103,9 @@ class Controller:
         self.server: EventServer | None = None
         self.detector = None                 # set by run(): receives custom triggers for its prompt
         self.source = None                   # set by run(): .stats() for the status message
+        self.tracer = None                   # set by run(): the demo page reads live/ files from its run dir
+        self.last_fire = None                # newest played event, for the demo page banner
+        self.mirror = {"on": False, "ts": None}
         self.memory = R.TriggerMemory()      # gaze history + per-trigger noticed/trend memory
         self.radar = None                    # RadarSense when cfg radar.enabled
         self.heart = None                    # HeartRateSense when cfg heart.enabled
@@ -391,6 +394,10 @@ class Controller:
                 if paused:
                     ev["paused"] = True
                 out.append(dict(ev))
+                if not quiet and not paused:
+                    self.last_fire = {"ts": time.time(), "name": e.trigger_name or e.rule, "why": e.why or e.reason,
+                                      "rgb": e.rgb, "pattern": e.pattern, "sensor": e.sensor,
+                                      "latency_ms": ev.get("latency_ms"), "ttc_s": e.extra.get("ttc_s")}
                 if det is not None and det.raw.get("call_id"):
                     ev["call_id"] = det.raw["call_id"]          # app: link to the trace / raw Haiku output
                     if det.raw.get("text"):
@@ -589,6 +596,28 @@ class Controller:
         print(f"command: {name} {args} -> {ack.get('detail')}", flush=True)
         return ack
 
+    # ---- demo page: the phone app's screen, mirrored (ReplayKit in-app capture) ----------------
+    def on_mirror_frame(self, msg: dict) -> None:
+        if self.tracer is None:
+            return None
+        try:
+            jpg = base64.b64decode(msg.get("jpeg_b64") or "", validate=True)
+        except (ValueError, TypeError):
+            return {"type": "error", "for": "mirror.frame", "error": "bad base64"}
+        if not jpg[:2] == b"\xff\xd8" or len(jpg) > 2_000_000:
+            return {"type": "error", "for": "mirror.frame", "error": "not a JPEG"}
+        live = self.tracer.run_dir / "live"
+        T._atomic_write(live / "phone.jpg", jpg)
+        self.mirror = {"on": True, "ts": time.time(), "w": msg.get("w"), "h": msg.get("h")}
+        T._atomic_write(live / "phone.json", json.dumps(self.mirror).encode())
+        return None                          # no ack: frames stream at ~8 fps
+
+    def on_mirror_state(self, msg: dict) -> None:
+        self.mirror = {**self.mirror, "on": bool(msg.get("on")), "ts": time.time()}
+        if self.tracer is not None:
+            T._atomic_write(self.tracer.run_dir / "live" / "phone.json", json.dumps(self.mirror).encode())
+        return None
+
     def attach(self, server: EventServer) -> None:
         self.server = server
         server.hello_extra = self.hello_extra
@@ -597,6 +626,8 @@ class Controller:
         server.on("rules.reset", self.on_reset)
         server.on("feedback", self.on_feedback)
         server.on("command", self.on_command)
+        server.on("mirror.frame", self.on_mirror_frame)
+        server.on("mirror.state", self.on_mirror_state)
         server.on("trace.subscribe", self.on_trace_subscribe)
         server.on("voice.command", self.on_voice_command)
         server.add_periodic(5.0, self.device_status)
@@ -703,7 +734,14 @@ def live_state(ctl: Controller, frame, last_call: dict, last_decision: dict) -> 
                      "box_age_s": round(now - d["frame_ts"], 2) if d.get("frame_ts") else None})
     mo = getattr(ctl.source, "motion", None)
     motion = mo() if callable(mo) else {}
+    stats = ctl.source.stats() if ctl.source is not None and hasattr(ctl.source, "stats") else {}
+    hs = ctl.heart_status() if hasattr(ctl, "heart_status") else None
+    heart = None if hs is None else {"bpm": hs.get("last_bpm"), "median": hs.get("median_bpm"),
+                                     "reading_ts": hs.get("last_ts"), "connected": hs.get("connected"),
+                                     "backend": hs.get("backend")}
     return {"frame_ts": frame.ts, "now": now, "frame_age_s": round(now - frame.ts, 3), "gaze": gnow, "motion": motion,
+            "last_fire": ctl.last_fire, "heard": stats.get("last_heard"), "listening": stats.get("listening"),
+            "worn": stats.get("worn"), "heart": heart,
             "trail": trail, "paused": ctl.paused, "quiet": ctl.quiet,
             "last_call": {**last_call, "age_s": round(now - last_call["frame_ts"], 2)} if last_call else None,
             "triggers": trig}
@@ -733,6 +771,7 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                                                                           if k != "env_file"},
                                        "source": (cfg.get("source") or {}).get("type", "fake"),
                                        "sink": (cfg.get("sink") or {}).get("type", "console")})
+    ctl.tracer = tracer
     system_sha = None
     if hasattr(detector, "system_text"):
         system_sha = tracer.add_system_prompt(detector.system_text) if tracer else T.sha(detector.system_text)

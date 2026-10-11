@@ -197,6 +197,8 @@ class Rule:
                 extra["looked_at_s_ago"] = t["looked_at_s_ago"]
             if t.get("ttc_s") is not None:
                 extra["ttc_s"] = t["ttc_s"]
+            # say it only for approach-type triggers (box jitter on a static scene gives a meaningless number)
+            if t.get("ttc_s") is not None and (self.if_.get("only_while_walking") or self.if_.get("max_ttc_s") is not None):
                 why = f"{why} (about {t['ttc_s']:.1f} s away)"
                 text = f"{self.name}: {why}"
 

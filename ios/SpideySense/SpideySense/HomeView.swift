@@ -31,6 +31,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
+                    SensesStrip(stream: stream, now: now, sample: showingSample)
                     if all.isEmpty {
                         EmptyHome().padding(.top, 40)
                     } else {
@@ -138,11 +139,10 @@ struct HomeView: View {
     /// never has to share its width with the pill (no wrapping at any text size).
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Button(action: openSettings) { StatusPill(status: stream.status, sample: showingSample) }
-                    .buttonStyle(PressableStyle())
-                if showingSample { SampleTag() }
-                Spacer(minLength: 0)
+            // Pill + sample tag side by side; stacked at the largest text sizes so the row never overflows.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { statusRow; Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 8) { statusRow }
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Spidey Sense").font(.spLargeTitle).foregroundStyle(Theme.ink)
@@ -155,6 +155,12 @@ struct HomeView: View {
         .padding(.top, 8)
     }
 
+    @ViewBuilder private var statusRow: some View {
+        Button(action: openSettings) { StatusPill(status: stream.status, sample: showingSample) }
+            .buttonStyle(PressableStyle())
+        if showingSample { SampleTag() }
+    }
+
     private var subtitle: String {
         switch stream.status {
         case .connected:
@@ -165,6 +171,199 @@ struct HomeView: View {
         case .connecting: return "Looking for your Spidey hub…"
         case .disconnected: return showingSample ? "Showing examples" : "Can't reach your Spidey hub"
         }
+    }
+}
+
+// MARK: - Your senses (heart chip + sight / hearing pills)
+
+/// A compact read of what Spidey can feel right now: your heart rate from the Oura card (`device.status` "oura"),
+/// plus tiny pills for sight (glasses worn) and hearing (listening). Each piece hides when its sense is absent;
+/// the whole strip hides when there is nothing to show.
+struct SensesStrip: View {
+    let stream: EventStream
+    let now: Date
+    var sample = false
+
+    private enum Heart: Equatable {
+        case reading(bpm: Int, delta: Int?, readAt: Date?, stale: Bool, simulated: Bool)
+        case waiting
+    }
+
+    /// The oura card, unless it's off / absent, or the device list is offline placeholders behind real events.
+    private var heart: Heart? {
+        if stream.devicesAreSample && !sample { return nil }
+        guard let card = stream.devices.first(where: { $0.id == "oura" }),
+              !["off", "coming_soon"].contains(card.status) else { return nil }
+        let h = card.heart
+        guard let bpm = h?.lastBpm else { return card.status == "connected" ? .waiting : nil }
+        let delta = h?.medianBpm.map { Int((bpm - $0).rounded()) }
+        let readAt = h?.lastReadingTs.map { Date(timeIntervalSince1970: $0) }
+        return .reading(bpm: Int(bpm.rounded()), delta: delta, readAt: readAt,
+                        stale: card.status == "disconnected", simulated: h?.isSimulated == true)
+    }
+
+    private var source: SourceStatus? {
+        if stream.devicesAreSample && !sample { return stream.engineStatus?.source }
+        var src = stream.engineStatus?.source ?? stream.devices.first(where: { $0.id == "neon" })?.source
+        if src?.listening == nil { src?.listening = stream.devices.first(where: { $0.id == "neon" })?.source?.listening }
+        return src
+    }
+    private var sight: Bool { source?.worn == true }
+    private var hearing: Bool { source?.listening == true }
+
+    var body: some View {
+        let h = heart
+        if h != nil || sight || hearing {
+            VStack(alignment: .leading, spacing: 14) {
+                if let h { HeartRow(heart: h, now: now) }
+                if sight || hearing {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { pills }
+                        VStack(alignment: .leading, spacing: 8) { pills }
+                    }
+                }
+            }
+            .softCard(padding: 16)
+            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+        }
+    }
+
+    @ViewBuilder private var pills: some View {
+        if sight { SensePill(text: "Glasses on", symbol: "eye") }
+        if hearing { SensePill(text: "Listening", symbol: "ear") }
+    }
+
+    private struct HeartRow: View {
+        let heart: Heart
+        let now: Date
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        private let pink = Color(red: 0.93, green: 0.27, blue: 0.52)
+
+        var body: some View {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(stale ? Theme.inkTertiary : pink)
+                    .keyframeAnimator(initialValue: 1.0, repeating: beating) { content, scale in
+                        content.scaleEffect(scale)
+                    } keyframes: { _ in
+                        KeyframeTrack {
+                            SpringKeyframe(1.16, duration: 0.12)
+                            SpringKeyframe(1.0, duration: 0.14)
+                            SpringKeyframe(1.08, duration: 0.1)
+                            SpringKeyframe(1.0, duration: 0.18)
+                            LinearKeyframe(1.0, duration: rest)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .background((stale ? Theme.ink.opacity(0.05) : pink.opacity(0.12)),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    headline
+                    Text(caption).font(.footnote).foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(a11y)
+        }
+
+        @ViewBuilder private var headline: some View {
+            switch heart {
+            case .waiting:
+                (Text("Oura").foregroundStyle(Theme.ink) + Text(" · waiting for a sync").foregroundStyle(Theme.inkSecondary))
+                    .font(.spHeadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            case let .reading(bpm, _, _, _, _):
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) { bpmText(bpm); trendTag(oneLine: true) }
+                    VStack(alignment: .leading, spacing: 4) { bpmText(bpm); trendTag(oneLine: false) }
+                }
+            }
+        }
+
+        private func bpmText(_ bpm: Int) -> some View {
+            (Text("\(bpm)").font(.spCardTitle.monospacedDigit()) + Text(" bpm").font(.subheadline.weight(.medium)))
+                .foregroundStyle(stale ? Theme.inkSecondary : Theme.ink)
+                .contentTransition(.numericText(value: Double(bpm)))
+                .animation(Theme.motion(reduceMotion), value: bpm)
+                .lineLimit(1).fixedSize()
+        }
+
+        @ViewBuilder private func trendTag(oneLine: Bool) -> some View {
+            if let t = trend {
+                Label(t.text, systemImage: t.up ? "arrow.up" : "arrow.down")
+                    .labelStyle(TightLabel())
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(t.up ? pink : Theme.inkSecondary)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background((t.up ? pink.opacity(0.10) : Theme.ink.opacity(0.05)),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .fixedSize(horizontal: oneLine, vertical: true)
+                    .transition(.opacity)
+            }
+        }
+
+        /// "↑ 13 above your usual" when ≥ 10 bpm over the median; "↓ 12 below your usual" when ≥ 10 under.
+        private var trend: (text: String, up: Bool)? {
+            guard case let .reading(_, delta?, _, stale, _) = heart, !stale, abs(delta) >= 10 else { return nil }
+            return delta > 0 ? ("\(delta) above your usual", true) : ("\(-delta) below your usual", false)
+        }
+
+        private var stale: Bool { if case let .reading(_, _, _, s, _) = heart { return s }; return false }
+
+        private var caption: String {
+            switch heart {
+            case .waiting: return "Readings arrive every few minutes"
+            case let .reading(_, _, readAt, stale, simulated):
+                let from = simulated ? "Simulated heart rate" : stale ? "Last from your Oura ring" : "From your Oura ring"
+                guard let readAt else { return from }
+                return "\(from) · " + Plain.ago(readAt, now: now).replacingOccurrences(of: " ", with: "\u{00A0}")
+            }
+        }
+
+        private var a11y: String {
+            switch heart {
+            case .waiting: return "Oura, waiting for a sync"
+            case let .reading(bpm, _, _, _, _):
+                return ["Heart rate \(bpm) beats per minute", trend?.text, caption].compactMap { $0 }.joined(separator: ", ")
+            }
+        }
+
+        private var beating: Bool {
+            guard !reduceMotion, case .reading = heart else { return false }
+            return !stale
+        }
+        /// One beat per (bpm) minute, clamped so it never looks frantic or frozen.
+        private var rest: Double {
+            guard case let .reading(bpm, _, _, _, _) = heart, bpm > 0 else { return 0.5 }
+            return max(0.12, min(1.4, 60.0 / Double(bpm) - 0.54))
+        }
+    }
+}
+
+/// Icon + text, tighter than the default Label spacing (for small tags).
+private struct TightLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 3) { configuration.icon.imageScale(.small); configuration.title }
+    }
+}
+
+/// "Glasses on" / "Listening": a tiny status pill under the heart chip.
+private struct SensePill: View {
+    let text: String
+    let symbol: String
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol).font(.caption.weight(.semibold)).foregroundStyle(Theme.good)
+            Text(text).font(.caption.weight(.semibold)).foregroundStyle(Theme.inkSecondary)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(Theme.ink.opacity(0.05), in: Capsule())
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }
 

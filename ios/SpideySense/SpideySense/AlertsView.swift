@@ -86,9 +86,23 @@ struct AlertsView: View {
             return ka < kb
         }.map(\.element)
     }
+    /// The Oura card is on (connected / simulated): heart-rate triggers will actually fire.
+    private var oura: HeartCard? {
+        guard let c = stream.devices.first(where: { $0.id == "oura" }),
+              ["connected", "simulated"].contains(c.status) else { return nil }
+        return c.heart ?? HeartCard()
+    }
+    /// Templates you haven't added yet. With a ring connected, "Heart racing" (or any heart template) comes first.
     private var suggested: [SenseRule] {
         let ids = Set(stream.rules.map(\.id))
-        return MockData.customTemplates.filter { !ids.contains($0.id) }
+        let hasHeart = stream.rules.contains { $0.isHeart }
+        let left = MockData.customTemplates.filter { !ids.contains($0.id) && !($0.isHeart && hasHeart) }
+        guard oura != nil else { return left }
+        return left.filter(\.isHeart) + left.filter { !$0.isHeart }
+    }
+    private func suggestedNote(_ r: SenseRule) -> String? {
+        guard r.isHeart, let o = oura else { return nil }
+        return o.isCloud ? "Uses your Oura ring \u{2014} updates every few minutes" : "Uses your Oura ring"
     }
 
     var body: some View {
@@ -235,6 +249,12 @@ struct AlertsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(r.name).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
                     Text(RulePlain.describe(r)).font(.footnote).foregroundStyle(Theme.inkSecondary).lineLimit(2)
+                    if let note = suggestedNote(r) {
+                        Label(note, systemImage: "heart.circle")
+                            .font(.caption.weight(.medium)).foregroundStyle(Theme.inkTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
                 }
                 Spacer()
                 Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(Theme.accent)

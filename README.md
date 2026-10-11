@@ -177,3 +177,11 @@ in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CL
 - `bleak`, `minimalmodbus`, `pyserial`, `websockets`, FastAPI, OpenCV.
 - `open_oura` (MIT, github.com/Th0rgal/open_oura) for live Oura ring heart rate (`backend/spidey/heart.py`, setup in `docs/oura.md`).
 - **Plus Jakarta Sans** (SIL OFL 1.1, Tokotype), the app's heading font: `ios/SpideySense/SpideySense/Fonts/` (with `OFL.txt`).
+
+## Demo screen (Mac, full screen)
+
+`./scripts/traces.sh` (viewer on :8096) + the engine running → open **http://localhost:8096/demo** and go full screen.
+- Left 70 %: the Neon scene with the gaze dot + trail, Haiku's boxes, a banner on every buzz (trigger, reason, Dot colour,
+  frame→buzz time), pills for gaze / walking / hearing / Oura heart rate.
+- Right 30 %: the iPhone app, mirrored live over Wi-Fi: in the app, Settings → Demo → **Mirror screen to Mac**
+  (ReplayKit in-app capture; only Spidey Sense is shared; iOS asks once). Frames: ≤ 8 fps, 540 px wide JPEG.

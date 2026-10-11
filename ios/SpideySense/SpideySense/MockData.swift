@@ -88,12 +88,22 @@ enum MockData {
                        detail: "source: neon (realtime)", lastSeen: now - 1, source: status.source),
             DeviceInfo(id: "radar", name: "Radar", kind: "radar", status: "simulated",
                        detail: "radar-lab server (sim)", lastSeen: now - 0.4, radar: status.radar),
-            DeviceInfo(id: "oura", name: "Oura", kind: "heart_rate", status: "connected",
-                       detail: "open_oura · 72 bpm · 2-min median 70 · open_oura: live", lastSeen: now - 0.8,
-                       heart: HeartCard(backend: "open_oura", lastBpm: 72, medianBpm: 70, sinceLastS: 0.8,
-                                        rateHz: 1.2, connected: true)),
+            ouraSample(now: now),
         ]
     }()
+
+    /// The Oura card as the cloud backend sends it: readings arrive a few minutes late.
+    /// Screenshot hook: `-demoHeart racing` (well above the usual), `waiting` (no reading yet), `off` (hidden).
+    static func ouraSample(now: Double) -> DeviceInfo {
+        let mode = UserDefaults.standard.string(forKey: "demoHeart")
+        let bpm: Double? = mode == "waiting" ? nil : mode == "racing" ? 86 : 72
+        let median: Double? = mode == "waiting" ? nil : mode == "racing" ? 71 : 70
+        let bpmText = bpm.map { " · \(Int($0)) bpm · 2-min median \(Int(median ?? 0))" } ?? ""
+        return DeviceInfo(id: "oura", name: "Oura", kind: "heart_rate", status: mode == "off" ? "off" : "connected",
+                          detail: "oura_cloud\(bpmText) · Oura cloud · last reading 6 min ago", lastSeen: now - 45,
+                          heart: HeartCard(backend: "oura_cloud", lastBpm: bpm, medianBpm: median, sinceLastS: 45,
+                                           connected: true, lastReadingTs: bpm == nil ? nil : now - 360))
+    }
 
     /// Offline sample for Home + the Log: a lion that buzzed 3 times in the last ~1.5 min (one collapsed card),
     /// a cyclist 3 min ago (second fresh card), and older items for "Earlier".
@@ -225,7 +235,11 @@ enum MockData {
     /// Offline stand-in for the engine's v3 `status`.
     static let status = StatusMessage(
         paused: false,
-        source: SourceStatus(type: "neon", live: true, fps: 16.2, gazeHz: 130, worn: true, battery: 13, delayMs: 140),
+        source: {
+            var s = SourceStatus(type: "neon", live: true, fps: 16.2, gazeHz: 130, worn: true, battery: 13, delayMs: 140)
+            s.listening = true
+            return s
+        }(),
         radar: RadarStatus(connected: true, url: "ws://localhost:8090", mode: "sim",
                            last: RadarReading(distanceM: 1.4, speedMps: 0.6, angleDeg: -32, side: "left"),
                            rateHz: 10, sinceLastS: 0.4),

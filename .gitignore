@@ -21,3 +21,4 @@ xcuserdata/
 *.zip
 .DS_Store
 backend/triggers*.json
+backend/triggers.demo.sim.json

@@ -361,22 +361,24 @@ struct DeviceInfo: Codable, Identifiable, Hashable {
 
 /// The `oura` device card's heart-rate fields (flat on the card).
 struct HeartCard: Decodable, Hashable {
-    var backend: String?        // open_oura | replay | fake
+    var backend: String?        // open_oura | oura_cloud | replay | fake
     var lastBpm: Double?
     var medianBpm: Double?      // rolling 2-min median
-    var sinceLastS: Double?
+    var sinceLastS: Double?     // since the engine RECEIVED the last reading
     var rateHz: Double?
     var connected: Bool?
+    var lastReadingTs: Double?  // unix s when the reading itself was taken (oura_cloud: minutes old); optional
 
     enum CodingKeys: String, CodingKey {
         case backend, connected
         case lastBpm = "last_bpm", medianBpm = "median_bpm", sinceLastS = "since_last_s", rateHz = "rate_hz"
+        case lastReadingTs = "last_reading_ts"
     }
 
     init(backend: String? = nil, lastBpm: Double? = nil, medianBpm: Double? = nil, sinceLastS: Double? = nil,
-         rateHz: Double? = nil, connected: Bool? = nil) {
+         rateHz: Double? = nil, connected: Bool? = nil, lastReadingTs: Double? = nil) {
         self.backend = backend; self.lastBpm = lastBpm; self.medianBpm = medianBpm; self.sinceLastS = sinceLastS
-        self.rateHz = rateHz; self.connected = connected
+        self.rateHz = rateHz; self.connected = connected; self.lastReadingTs = lastReadingTs
     }
 
     init(from decoder: Decoder) throws {
@@ -384,10 +386,12 @@ struct HeartCard: Decodable, Hashable {
         backend = c.lenient(String.self, .backend); lastBpm = c.lenient(Double.self, .lastBpm)
         medianBpm = c.lenient(Double.self, .medianBpm); sinceLastS = c.lenient(Double.self, .sinceLastS)
         rateHz = c.lenient(Double.self, .rateHz); connected = c.lenient(Bool.self, .connected)
+        lastReadingTs = c.lenient(Double.self, .lastReadingTs)
     }
 
     /// An engine with the heart sense sends at least the backend; the old stub card sends none of these.
     var hasData: Bool { backend != nil || lastBpm != nil || medianBpm != nil }
+    var isCloud: Bool { backend == "oura_cloud" }
     var isSimulated: Bool { backend == "replay" || backend == "fake" }
 }
 
@@ -1037,3 +1041,18 @@ struct LinkPing: Encodable {
     var flash: Bool
     enum CodingKeys: String, CodingKey { case type, id, flash, tApp = "t_app" }
 }
+
+// MARK: - v3.6 demo mirror (app -> engine). No ack; the engine relays to its demo web page.
+
+/// One mirrored frame of this app's screen (ReplayKit in-app capture), JPEG, base64. ~8 fps max, latest-wins.
+struct MirrorFrame: Encodable, Sendable {
+    let type = "mirror.frame"
+    var jpegB64: String
+    var w: Int
+    var h: Int
+    var ts: Double   // unix seconds
+    enum CodingKeys: String, CodingKey { case type, w, h, ts, jpegB64 = "jpeg_b64" }
+}
+
+/// Sent when mirroring starts (`on: true`) and stops (`on: false`, best effort: not sent when the link is down).
+struct MirrorState: Encodable { let type = "mirror.state"; var on: Bool }

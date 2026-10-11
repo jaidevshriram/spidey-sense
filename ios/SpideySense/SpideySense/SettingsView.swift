@@ -72,6 +72,8 @@ struct SettingsView: View {
                     }
                     .softCard(padding: 18)
 
+                    DemoMirrorCard(stream: stream)
+
                     VStack(spacing: 4) {
                         Text(versionText)
                         Text("Headings: Plus Jakarta Sans (SIL OFL 1.1, Tokotype)")
@@ -146,6 +148,62 @@ struct SettingsView: View {
     private var versionText: String {
         let i = Bundle.main.infoDictionary
         return "Spidey Sense \(i?["CFBundleShortVersionString"] as? String ?? "?") (\(i?["CFBundleVersion"] as? String ?? "?"))"
+    }
+}
+
+// MARK: - Demo (v3.6 screen mirror)
+
+/// "Mirror screen to Mac": ReplayKit in-app capture of this app only, streamed to the Mac's demo page.
+private struct DemoMirrorCard: View {
+    let stream: EventStream
+    @AppStorage(MirrorCapture.enabledKey) private var mirrorOn = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let mirror = MirrorCapture.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Demo").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkTertiary)
+                .textCase(.uppercase)
+            Toggle(isOn: $mirrorOn.animation(Theme.motion(reduceMotion))) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "rectangle.on.rectangle").font(.title3).foregroundStyle(Theme.inkSecondary)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Mirror screen to Mac").font(.spHeadline).foregroundStyle(Theme.ink)
+                        Text("Shows this app on the Mac's demo screen. Only Spidey Sense is shared.")
+                            .font(.subheadline).foregroundStyle(Theme.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .tint(Theme.accent)
+            if let status = statusLine {
+                HStack(spacing: 8) {
+                    Circle().fill(status.color).frame(width: 8, height: 8)
+                    Text(status.text).font(.footnote.weight(.medium)).foregroundStyle(status.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.numericText())
+                }
+                .padding(.leading, 42)
+                .transition(.opacity)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.vertical, 6)
+        .softCard(padding: 18)
+        .onChange(of: mirrorOn) { _, on in mirror.setEnabled(on) }
+        .onAppear { mirror.attach(stream) }
+    }
+
+    private var statusLine: (text: String, color: Color)? {
+        if let m = mirror.message, !mirrorOn { return (m, Theme.warn) }
+        guard mirrorOn else { return nil }
+        if mirror.running {
+            return ("Live on the Mac \u{00B7} \(mirror.fps) fps", Theme.good)
+        }
+        if mirror.starting { return ("Waiting for permission\u{2026}", Theme.inkSecondary) }
+        if !stream.isLive { return ("Starts when your Spidey hub is connected.", Theme.inkSecondary) }
+        return ("Starting\u{2026}", Theme.inkSecondary)
     }
 }
 

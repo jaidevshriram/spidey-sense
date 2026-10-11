@@ -50,6 +50,23 @@ class TestOuraCloud(unittest.TestCase):
         self.assertFalse(hs.status()["connected"])
         self.assertIn("no token", hs.status()["detail"])
 
+    def _rule(self):
+        return {"id": "hr", "name": "Heart racing", "source": "heart_rate", "feel": "pulse",
+                "if": {"min_delta_bpm": 15}, "cooldown_s": 60}
+
+    def test_cloud_single_fresh_reading_fires(self):
+        now = time.time()
+        sample = {"ts": now - 300, "bpm": 92.0, "median_bpm": 70.0, "baseline_ready": True, "backend": "oura_cloud"}
+        _, fire = H.HeartTriggers.step_rule(self._rule(), sample, H.HeartState())
+        self.assertIsNotNone(fire)
+        self.assertIn("over your usual 70", fire["why"])
+
+    def test_cloud_history_never_fires(self):
+        sample = {"ts": time.time() - 3 * 3600, "bpm": 120.0, "median_bpm": 70.0, "baseline_ready": True,
+                  "backend": "oura_cloud"}
+        _, fire = H.HeartTriggers.step_rule(self._rule(), sample, H.HeartState())
+        self.assertIsNone(fire)
+
 
 if __name__ == "__main__":
     unittest.main()

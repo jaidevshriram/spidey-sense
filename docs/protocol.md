@@ -374,3 +374,26 @@ is not its own, and gives up after 20 s.
 **Hearing.** The `neon` source stats (`status.source` and the device card) gain `"listening": bool` and
 `"last_heard": string | null` (the glasses' microphone). The app's Debug Neon card shows `hearing: "…"` while listening,
 `not listening` when false, and nothing when absent.
+
+**Oura via the cloud.** The `oura` device card's `backend` may be `"oura_cloud"` (Oura's cloud API, polled every 60 s;
+readings arrive minutes late, ~5 min apart), and the card may carry an optional `"last_reading_ts"` (unix seconds when the
+reading itself was taken; `since_last_s` / `last_seen` are when the engine received it). The app's Home "Your senses" chip
+shows `last_bpm`, the age from `last_reading_ts` (no age when absent) and "N above your usual" when `last_bpm` is 10+ over `median_bpm`.
+
+## v3.6 mirror
+
+Demo-only screen mirroring: the app (Settings > Demo > "Mirror screen to Mac", default off) captures **its own screen
+only** with ReplayKit in-app capture (no broadcast extension, no microphone) and streams it to the engine, which relays it
+to the demo web page next to the glasses' view. App -> engine, no ack:
+```json
+{"type": "mirror.state", "on": true}
+{"type": "mirror.frame", "jpeg_b64": "<base64 JPEG>", "w": 540, "h": 1171, "ts": 1760200000.123}
+```
+- `mirror.frame`: JPEG, ~540 px wide (aspect kept; already rotated upright), quality 0.55 adapting down to 0.35 to keep
+  each message under ~60 KB. At most ~8 fps; latest-wins (one frame in flight, never queued), so a slow link just
+  lowers the rate. `w`/`h` are pixel sizes; `ts` is unix seconds at encode time.
+- `mirror.state`: `on: true` when capture starts; `on: false` when it stops while the socket is still up (toggle off,
+  app backgrounded). A dropped socket sends nothing: the engine should treat the mirror as off when that client
+  disconnects or when no frame has arrived for a few seconds.
+- The app stops capture when the WebSocket is offline or the app is in the background, and restarts it (toggle still on)
+  when both are back. iOS shows its own consent alert on start; if declined the toggle turns itself off.

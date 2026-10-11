@@ -18,6 +18,7 @@
 		68A0E2BA526CBBF8502AA5B3 /* EngineSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF49BA3B3BC0D2D881A5464 /* EngineSettingsView.swift */; };
 		6F698C43F0CE8F9480F12BFE /* EngineHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5DDB272DAB8FA926675C21 /* EngineHeader.swift */; };
 		94CB4848DF6EDA5EE439B7D4 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C6C26B4938CED3BCAE6D54 /* Model.swift */; };
+		9E7BFB7F097878B1B99CAD84 /* MirrorCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABC76E34842DDFE79A60B0B5 /* MirrorCapture.swift */; };
 		A5DBAC59194CBF5B6B73C7B2 /* VoiceAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946866F0F9AED689F16B759F /* VoiceAudio.swift */; };
 		AAD3AFC3025D30E8D2F9C5B4 /* HapticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F681C6798CE5B8235239A9FB /* HapticsView.swift */; };
 		B167AA94534F6491CD5EEFAA /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 402CE8EF727C61682D425A19 /* DevicesView.swift */; };
@@ -50,6 +51,7 @@
 		8FF6E3FE14ADEE5B1A927453 /* EventGroups.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventGroups.swift; sourceTree = "<group>"; };
 		946866F0F9AED689F16B759F /* VoiceAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudio.swift; sourceTree = "<group>"; };
 		A3DB8512624D457A26D58539 /* SensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensesView.swift; sourceTree = "<group>"; };
+		ABC76E34842DDFE79A60B0B5 /* MirrorCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MirrorCapture.swift; sourceTree = "<group>"; };
 		AE994583880BAD57E036D78D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		B44BE9BDE1EC01D391EB02F4 /* LiveDecisions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDecisions.swift; sourceTree = "<group>"; };
 		B707CB171BBE4842BC81AE21 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
@@ -81,6 +83,7 @@
 				AE994583880BAD57E036D78D /* HomeView.swift */,
 				3F75FFAC84C7D5F5C028B7FF /* Info.plist */,
 				B44BE9BDE1EC01D391EB02F4 /* LiveDecisions.swift */,
+				ABC76E34842DDFE79A60B0B5 /* MirrorCapture.swift */,
 				FB70254162A5B6CF34E181CE /* MockData.swift */,
 				21C6C26B4938CED3BCAE6D54 /* Model.swift */,
 				DE8C5F83C5B37487B2A69CF0 /* Protocol.swift */,
@@ -229,6 +232,7 @@
 				AAD3AFC3025D30E8D2F9C5B4 /* HapticsView.swift in Sources */,
 				F98B2239FB1130C183C3A6CF /* HomeView.swift in Sources */,
 				3C0C43B561C9A5B30A7096D8 /* LiveDecisions.swift in Sources */,
+				9E7BFB7F097878B1B99CAD84 /* MirrorCapture.swift in Sources */,
 				B336346F212E268F8411F177 /* MockData.swift in Sources */,
 				94CB4848DF6EDA5EE439B7D4 /* Model.swift in Sources */,
 				BB54A6B19BA0B1A3DC133749 /* Protocol.swift in Sources */,

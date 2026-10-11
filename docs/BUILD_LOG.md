@@ -577,3 +577,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - App v3.5: voice playback, "Spidey's voice" setting, "Hold to tell Spidey" + draft sheet, hearing line on the Debug Neon card. Not yet tested on a device or with the glasses.
 - Oura: OAuth via the new developer portal (redirect http://localhost:8099/callback) works; token saved 0600 in ~/.config/spidey. The cloud has heart rate up to 2026-09-24 21:30, nothing newer: the ring needs to sync via the Oura app.
 - 116/116 tests.
+- Demo screen: /demo (viewer) = 70% live scene (gaze, boxes, buzz banner with frame->buzz time, pills) + 30% phone mirror (app streams `mirror.frame` JPEGs; engine writes live/phone.jpg). Verified with the world sim + a fake phone stream; screenshot docs/screenshots/demo-screen.jpg.
+- App: Mirror screen to Mac (MirrorCapture.swift), Oura heart card on Home ("Your senses"), heart template in Suggested.
+- Heart trigger on cloud data: one fresh reading above the line counts (no 8 s hold); readings older than 15 min never buzz (startup history replay). why text "over your usual". Time-to-contact phrase only for approach-type triggers. 118/118 tests.

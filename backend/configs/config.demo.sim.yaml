@@ -1,0 +1,55 @@
+source:
+  type: fake
+  paths:
+  - ../../logs/world_sim/world_lion.jpg
+  - ../../logs/world_sim/world_tiger.jpg
+  - ../../logs/world_sim/world_dog.jpg
+  - ../../logs/world_sim/world_car.jpg
+  - ../../logs/world_sim/world_house.jpg
+  hold_s: 6
+  fps: 15
+  gaze: script
+  gaze_script:
+  - - 0.0
+    - 0.69
+    - 0.5
+  - - 3.0
+    - 0.17
+    - 0.42
+  - - 6.0
+    - 0.17
+    - 0.42
+  - - 9.0
+    - 0.69
+    - 0.5
+  - - 12.0
+    - 0.69
+    - 0.5
+  - - 24.0
+    - 0.17
+    - 0.42
+detector:
+  type: vlm
+  model: claude-haiku-5-5
+  max_side: 512
+  jpeg_quality: 70
+  concurrency: 3
+  stream: true
+  max_tokens: 200
+  min_interval_s: 0.4
+  env_file: ../../.env
+  treat_screens_as_real: true
+detect_every_s: 0
+rules_file: triggers.demo.sim.json
+rules_seed: desk_test/triggers.desk.json
+rules_seed_enable:
+- big_cat_look
+- lion_unnoticed
+sink:
+  type: console
+log: ../logs/world_sim/world_sim_events.jsonl
+server:
+  enabled: true
+  port: 8765
+trace:
+  enabled: true

@@ -166,6 +166,23 @@ def live():
     return LIVE_HTML
 
 
+@app.get("/demo", response_class=HTMLResponse)
+def demo():
+    return DEMO_HTML
+
+
+@app.get("/api/phone")
+def api_phone(run: str | None = None):
+    d = run_dir(run)
+    try:
+        st = json.loads((d / "live" / "phone.json").read_text())
+    except (OSError, ValueError):
+        return {"run": d.name, "on": False}
+    st["run"] = d.name
+    st["age_s"] = round(time.time() - (st.get("ts") or 0), 2)
+    return st
+
+
 STYLE = """
 body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111;margin:0;padding:12px 16px;font-size:15px}
 h1{font-size:20px;margin:0 0 8px}
@@ -193,7 +210,7 @@ a{color:#0645ad}
 
 INDEX_HTML = """<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Spidey traces</title><style>""" + STYLE + """</style></head><body>
-<h1>Spidey Sense: Haiku call traces <span style="font-size:14px;font-weight:normal"> · <a href="/live">live view</a></span></h1>
+<h1>Spidey Sense: Haiku call traces <span style="font-size:14px;font-weight:normal"> · <a href="/live">live view</a> · <a href="/demo">demo screen</a></span></h1>
 <div class=bar>
  <label>Run <select id=run></select></label>
  <label>Trigger <select id=trig><option value="">all</option></select></label>
@@ -333,6 +350,136 @@ async function tick(){
   finally{ busy=false; }
 }
 setInterval(tick,200); tick();
+</script></body></html>"""
+
+
+DEMO_HTML = """<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Spidey Sense Demo</title>
+<link rel=preconnect href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel=stylesheet>
+<style>
+:root{--bg:#0e0e11;--panel:#17171c;--ink:#f5f5f7;--muted:#9a9aa5;--coral:#ff5a5f;--line:#2a2a31}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",-apple-system,Helvetica,Arial,sans-serif;overflow:hidden}
+#grid{display:grid;grid-template-columns:70fr 30fr;gap:18px;height:100vh;padding:18px}
+.col{display:flex;flex-direction:column;min-height:0;min-width:0}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.brand{font-weight:800;font-size:26px;letter-spacing:-.02em;margin-right:8px}.brand span{color:var(--coral)}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);
+  font-size:15px;font-weight:600;color:var(--muted);transition:all .3s}
+.pill.on{color:var(--ink);border-color:#3a3a44}.pill .d{width:9px;height:9px;border-radius:50%;background:#55555f}
+.pill.on .d{background:#3ad16f;box-shadow:0 0 10px #3ad16f99}.pill.warn .d{background:#ffb020}
+#stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;border-radius:22px;
+  overflow:hidden;border:2px solid var(--line);transition:border-color .4s, box-shadow .4s}
+#scenebox{position:relative;max-width:100%;max-height:100%}
+#scene{display:block;width:100%;height:100%;object-fit:contain}
+#ov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#banner{position:absolute;left:24px;right:24px;bottom:24px;background:rgba(14,14,17,.86);backdrop-filter:blur(12px);
+  border-radius:20px;padding:18px 22px;display:flex;gap:18px;align-items:center;transform:translateY(140%);opacity:0;
+  transition:transform .45s cubic-bezier(.2,.9,.25,1.2),opacity .3s;border:1px solid #ffffff1f}
+#banner.show{transform:none;opacity:1}
+#swatch{width:54px;height:54px;border-radius:16px;flex:none;box-shadow:0 0 24px currentColor}
+#bname{font-size:30px;font-weight:800;letter-spacing:-.01em}#bwhy{font-size:19px;color:#d6d6dc;margin-top:2px}
+#bmeta{margin-left:auto;text-align:right;font-size:15px;color:var(--muted);white-space:nowrap}#bmeta b{display:block;font-size:30px;color:var(--ink)}
+#heard{position:absolute;left:24px;top:20px;max-width:70%;background:rgba(14,14,17,.75);border-radius:14px;padding:10px 14px;font-size:17px;
+  opacity:0;transition:opacity .4s}#heard.show{opacity:1}#heard .k{color:var(--coral);font-weight:700;margin-right:6px}
+#status{position:absolute;right:20px;top:18px;font-size:14px;color:var(--muted);background:rgba(14,14,17,.7);padding:6px 12px;border-radius:999px}
+#wait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px;text-align:center;padding:40px}
+.phonecol{align-items:center;justify-content:center}
+.phonetitle{font-size:16px;color:var(--muted);font-weight:600;margin-bottom:12px;align-self:stretch;text-align:center}
+#phone{position:relative;height:min(100%,calc((100vh - 90px)));aspect-ratio:9/19.5;max-width:100%;background:#000;border-radius:54px;
+  padding:13px;box-shadow:0 0 0 2px #3a3a44,0 30px 80px #0009}
+#phone .screen{position:relative;width:100%;height:100%;border-radius:42px;overflow:hidden;background:#f7f6f4}
+#phoneimg{width:100%;height:100%;object-fit:cover;display:block}
+#phonewait{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:#666;
+  font-size:16px;text-align:center;padding:28px;background:#f7f6f4}
+#phonewait b{color:#222;font-size:19px}
+</style></head><body>
+<div id=grid>
+ <div class=col>
+  <div class=top>
+   <div class=brand>Spidey <span>Sense</span></div>
+   <div class=pill id=pgaze><span class=d></span><span>Gaze</span></div>
+   <div class=pill id=pwalk><span class=d></span><span>Still</span></div>
+   <div class=pill id=pear><span class=d></span><span>Hearing</span></div>
+   <div class=pill id=pheart><span class=d></span><span>Heart</span></div>
+  </div>
+  <div id=stage>
+   <div id=scenebox><img id=scene alt=""><svg id=ov viewBox="0 0 1 1" preserveAspectRatio="none"></svg></div>
+   <div id=heard><span class=k>Heard</span><span id=heardtxt></span></div>
+   <div id=status></div>
+   <div id=wait>Waiting for the glasses…<br><span style="font-size:15px">Start the engine with tracing on.</span></div>
+   <div id=banner><div id=swatch></div><div><div id=bname></div><div id=bwhy></div></div><div id=bmeta></div></div>
+  </div>
+ </div>
+ <div class="col phonecol">
+  <div class=phonetitle>Spidey Sense app · live from the phone</div>
+  <div id=phone><div class=screen><img id=phoneimg alt=""><div id=phonewait><b>Phone not mirrored</b>In the app: Settings → Mirror screen to Mac</div></div></div>
+ </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const rgbcss=c=>c&&c.length===3?`rgb(${c[0]},${c[1]},${c[2]})`:"#ff5a5f";
+let busy=false, lastFrame=0, lastPhone=0, shownFire=0;
+function pill(id,on,text,warn){const p=$(id);p.classList.toggle("on",!!on);p.classList.toggle("warn",!!warn);p.lastElementChild.textContent=text;}
+function fit(st){ // size the scene box to the image aspect inside the stage
+  const wh=st.img_wh||[1600,1200], S=$("stage").getBoundingClientRect(), a=wh[0]/wh[1];
+  let w=S.width, h=w/a; if(h>S.height){h=S.height; w=h*a;}
+  $("scenebox").style.width=w+"px"; $("scenebox").style.height=h+"px";
+}
+async function tick(){
+  if(busy) return; busy=true;
+  try{
+    const st=await (await fetch("/api/live")).json();
+    if(!st||!st.frame_ts){ $("wait").style.display="flex"; return; }
+    $("wait").style.display=st.stale_s>3?"flex":"none";
+    if(st.stale_s>3) $("wait").innerHTML="Waiting for the glasses…<br><span style='font-size:15px'>no video for "+st.stale_s+" s</span>";
+    fit(st);
+    if(st.written!==lastFrame){ lastFrame=st.written; const im=new Image(); im.onload=()=>{$("scene").src=im.src;}; im.src="/runs/"+encodeURIComponent(st.run)+"/live/frame.jpg?t="+st.written; }
+    let s="";
+    const recent=st.last_fire&&(st.now-st.last_fire.ts)<6;
+    for(const t of st.triggers||[]){ if(!t.bbox) continue;
+      const fired=t.state==="fired", col=fired?rgbcss((st.last_fire||{}).rgb):(t.matched?"#ffb020":"#ffffff66"), b=t.bbox;
+      if(!fired&&!t.matched) continue;
+      s+=`<rect x="${b[0]}" y="${b[1]}" width="${b[2]-b[0]}" height="${b[3]-b[1]}" rx="0.01" fill="none" stroke="${col}" stroke-width="0.005"/>`
+        +`<text x="${b[0]+0.006}" y="${Math.max(0.04,b[1]-0.012)}" font-size="0.032" font-weight="700" fill="${col}" stroke="#000" stroke-width="0.006" paint-order="stroke">${esc(t.name)}</text>`; }
+    const tr=st.trail||[];
+    if(tr.length>1) s+=`<polyline points="${tr.map(p=>p[1]+","+p[2]).join(" ")}" fill="none" stroke="#ff5a5f" stroke-width="0.005" stroke-linecap="round" opacity="0.55"/>`;
+    if(st.gaze) s+=`<circle cx="${st.gaze[0]}" cy="${st.gaze[1]}" r="0.026" fill="#ff5a5f33" stroke="#ff5a5f" stroke-width="0.004"/><circle cx="${st.gaze[0]}" cy="${st.gaze[1]}" r="0.009" fill="#ff5a5f"/>`;
+    $("ov").innerHTML=s;
+    const mo=st.motion||{};
+    pill("pgaze",!!st.gaze,st.gaze?"Gaze tracked":(st.worn===false?"Glasses off":"No gaze"),!st.gaze);
+    pill("pwalk",!!mo.walking,mo.walking==null?"Motion –":mo.walking?`Walking${mo.cadence_spm?" · "+mo.cadence_spm+" steps/min":""}`:(mo.turning?"Turning head":"Still"));
+    pill("pear",!!st.listening,st.listening?"Hearing":"Not listening");
+    const h=st.heart; let ht="Heart –";
+    if(h&&h.bpm){ const ago=h.reading_ts?Math.round((Date.now()/1000-h.reading_ts)/60):null; ht=`♥ ${Math.round(h.bpm)} bpm${ago!=null?` · ${ago<1?"now":ago+" min ago"}`:""}`; }
+    else if(h&&h.connected) ht="♥ Oura · waiting for sync";
+    pill("pheart",!!(h&&h.connected),ht);
+    $("heardtxt").textContent=st.heard||""; $("heard").classList.toggle("show",!!st.heard);
+    $("status").textContent=st.paused?"PAUSED":`video ${Math.round(st.frame_age_s*1000)} ms`;
+    const b=$("banner"), lf=st.last_fire;
+    if(recent){
+      if(lf.ts!==shownFire){ shownFire=lf.ts; const c=rgbcss(lf.rgb);
+        $("swatch").style.background=c; $("swatch").style.color=c;
+        $("bname").textContent=lf.name||"Spidey Sense"; $("bwhy").textContent=lf.why||"";
+        $("bmeta").innerHTML=lf.latency_ms?`<b>${(lf.latency_ms/1000).toFixed(1)} s</b>frame → buzz`:"";
+        $("stage").style.borderColor=c; $("stage").style.boxShadow=`0 0 60px ${c}88`;
+        setTimeout(()=>{$("stage").style.borderColor="";$("stage").style.boxShadow="";},1600); }
+      b.classList.add("show");
+    } else b.classList.remove("show");
+  }catch(e){ $("status").textContent="viewer offline"; }
+  finally{ busy=false; }
+}
+async function phone(){
+  try{
+    const p=await (await fetch("/api/phone")).json();
+    const live=p.on&&p.age_s<3;
+    $("phonewait").style.display=live?"none":"flex";
+    if(live&&p.ts!==lastPhone){ lastPhone=p.ts; const im=new Image(); im.onload=()=>{$("phoneimg").src=im.src;};
+      im.src="/runs/"+encodeURIComponent(p.run)+"/live/phone.jpg?t="+p.ts; }
+  }catch(e){}
+}
+setInterval(tick,120); setInterval(phone,110); tick(); phone(); addEventListener("resize",()=>{lastFrame=0;});
 </script></body></html>"""
 
 

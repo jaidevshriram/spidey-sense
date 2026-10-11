@@ -79,6 +79,7 @@ final class EventStream {
         url = URL(string: urlString.trimmingCharacters(in: .whitespaces))
         reconnects = 0
         guard let url else { status = .disconnected; lastError = "Invalid URL"; return }
+        MirrorCapture.shared.attach(self)   // v3.6 demo mirror follows the connection
         loop = Task { await run(url) }
     }
 
@@ -317,6 +318,23 @@ final class EventStream {
             Task { @MainActor in self?.lastAck = "send failed: \(err.localizedDescription)" }
         }
         return true
+    }
+
+    // MARK: - v3.6 demo mirror
+
+    /// Sends a pre-encoded `mirror.frame` (built off-main by MirrorCapture). False when offline; `done` fires once
+    /// the socket has taken the frame, so the capture side never queues more than one.
+    @discardableResult
+    func sendMirrorFrame(_ json: String, done: @escaping @Sendable (Bool) -> Void) -> Bool {
+        guard status == .connected, let task else { return false }
+        task.send(.string(json)) { err in done(err == nil) }
+        return true
+    }
+
+    /// `mirror.state` (best effort; silently skipped while offline).
+    func sendMirrorState(_ on: Bool) {
+        guard isLive else { return }
+        send(MirrorState(on: on))
     }
 
     /// Add or replace a rule. Optimistic local update only once the message actually went out

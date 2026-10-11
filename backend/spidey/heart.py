@@ -62,6 +62,7 @@ BACKENDS = ("replay", "fake", "open_oura")
 WINDOW_S = 120.0            # rolling median window ("2-min median")
 SMOOTH_S = 5.0              # bpm compared against the median = median of the last 5 s (per-beat bpm is jumpy)
 MIN_BASELINE_S = 30.0       # no fires until the window holds this much history
+CLOUD_FRESH_S = 900.0       # oura_cloud: only readings newer than this can buzz
 MAX_GAP_S = 10.0            # a gap this long between readings restarts a sustained excursion
 OURA_CHUNK_S = 600          # `live-hr --seconds`; the CLI restores the ring's AUTOMATIC HR mode after each chunk
 OURA_BACKOFF_S = (2, 5, 10, 20, 30)
@@ -166,13 +167,20 @@ class HeartTriggers:
         if ts is None or bpm is None:
             return None
         p = HeartParams.from_rule(rule_get(rule, "if_"), rule_get(rule, "cooldown_s"))
+        cloud = sample.get("backend") == "oura_cloud"
+        if cloud:                  # ~5-min spacing: one reading above the line counts (no 8 s hold possible)
+            p = replace(p, sustain_s=0.0)
         st, fire = heart_step(state, float(ts), float(bpm), sample.get("median_bpm"), p,
                               bool(sample.get("baseline_ready", True)))
+        if fire and cloud and time.time() - float(ts) > CLOUD_FRESH_S:
+            return st, None        # history replayed on startup / a late sync: never buzz for the past
         if not fire:
             return st, None
         rid = rule_get(rule, "id") or rule_get(rule, "name") or "heart"
         name = rule_get(rule, "name") or rid
-        why = (f"HR {fire['bpm']:.0f} bpm, {fire['delta_bpm']:+.0f} over your 2-min median "
+        why = (f"HR {fire['bpm']:.0f} bpm, {fire['delta_bpm']:+.0f} over your usual {fire['median_bpm']:.0f} "
+               f"(Oura, {fmt_age(time.time() - float(ts))} ago)" if cloud else
+               f"HR {fire['bpm']:.0f} bpm, {fire['delta_bpm']:+.0f} over your 2-min median "
                f"{fire['median_bpm']:.0f} for {fire['above_s']:.0f} s")
         return st, {"rule": rid, "trigger_name": name, "pattern": rule_get(rule, "feel") or "pulse",
                     "dot": rule_get(rule, "dot"), "intensity": rule_get(rule, "intensity"),
@@ -224,6 +232,7 @@ def oura_card(status: dict | None, now: float | None = None) -> dict:
     return {**base, "status": st, "detail": " · ".join(b for b in bits if b),
             "backend": backend, "last_bpm": status.get("last_bpm"), "median_bpm": status.get("median_bpm"),
             "since_last_s": since, "rate_hz": status.get("rate_hz"), "connected": bool(status.get("connected")),
+            "last_reading_ts": status.get("last_ts"),     # when the reading itself was taken (cloud: minutes old)
             "last_seen": None if since is None else round(now - since, 3)}
 
 

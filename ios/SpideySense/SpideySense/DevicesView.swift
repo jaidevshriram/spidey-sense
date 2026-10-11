@@ -147,6 +147,7 @@ struct DeviceCard: View {
         case "oura":
             switch device.heart?.backend {
             case "open_oura": "Oura ring, live heart rate via open_oura (Bluetooth, Mac)"
+            case "oura_cloud": "Your Oura ring, via Oura's cloud (updates every few minutes)"
             case "replay": "Heart rate replayed from a CSV on the Mac"
             case "fake": "Fake heart rate on the Mac"
             default: device.status == "coming_soon" ? "Heart rate ring" : "Heart rate ring (open_oura)"
@@ -253,8 +254,13 @@ struct HeartDetail: View {
                     .compactMap { $0 }.joined(separator: " · "))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(heart.connected == false && !heart.isSimulated ? Color.red : Color.secondary)
+            if let ts = heart.lastReadingTs {   // cloud: the reading itself is minutes old
+                Text("reading taken \(Plain.ago(Date(timeIntervalSince1970: ts), now: now))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let since = sinceLast {
-                Text(String(format: "%.1f s since the last beat", since)).font(.caption).foregroundStyle(.tertiary)
+                Text(String(format: heart.isCloud ? "%.0f s since the last sync" : "%.1f s since the last beat", since))
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
     }

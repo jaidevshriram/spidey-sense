@@ -69,9 +69,11 @@ class TestRuleOptions(unittest.TestCase):
     def test_ttc_in_event(self):
         d = det(1.0, box(0.5, 0.6, 0.3))
         d.triggers["obs"]["ttc_s"] = 1.2
-        ev, _ = rule()[0].decide(d, 1.1, {})
+        ev, _ = rule(only_while_walking=True)[0].decide(d, 1.1, {})
         self.assertEqual(ev.extra["ttc_s"], 1.2)
         self.assertIn("about 1.2 s away", ev.why)
+        ev, _ = rule()[0].decide(det(1.0, box(0.5, 0.6, 0.3)) if False else d, 1.1 + 10, {})
+        self.assertNotIn("s away", ev.why)               # not an approach-type trigger: no distance-in-time talk
 
 
 if __name__ == "__main__":
