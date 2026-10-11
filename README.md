@@ -64,7 +64,7 @@ looking away from something can fire in about 0.25 s without waiting for a new H
 
 | Works (tested live) | Limits (be aware) |
 |---|---|
-| Neon glasses → Mac over the Companion phone's 5 GHz hotspot (~90 ms median) | **Walking detection does not work today.** The code exists (step detection from the Neon IMU, tested on synthetic data), but with our Companion app version the IMU stream arrives as all zeros. Walking shows as "unknown" and never blocks a trigger. |
+| Neon glasses → Mac over the Companion phone's 5 GHz hotspot (~90 ms median) | **Walking detection works** (step detection from the Neon IMU, e.g. "Walking · 120 steps/min"). It needs the Companion app to stream motion; if the IMU drops out, walking shows as "unknown" and never blocks a trigger. |
 | Claude Haiku on live frames, frame → cue 0.92 s median on test scenes | **The glasses microphone does not work today.** The hearing code (ElevenLabs speech-to-text with sound tags) is built but gets no audio from the glasses. |
 | Gaze-aware triggers: silent when you looked, buzz when you did not | **Oura heart rate is only as fresh as the last sync.** Readings reach the cloud minutes late; readings older than 15 min never buzz. |
 | Dot over Bluetooth, 117 ms median to buzz | **Radar is paused.** The code stays in `radar/`. |
@@ -137,8 +137,8 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `docs/` | `STATUS.md` (current state, one page), `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped), `deck/` (slides) |
 | `scripts/` | setup, API key, playground, Bluetooth test/latency, `traces.sh` (trace viewer :8096) |
 
-Note on the diagram: the IMU and microphone streams are wired up, but today the IMU sends zeros and the microphone sends no
-audio (see *What works today*).
+Note on the diagram: the IMU and microphone streams are wired up. The IMU works (walking detection); the microphone sends no
+audio today (see *What works today*).
 
 ### All features in detail
 
@@ -158,9 +158,8 @@ audio (see *What works today*).
   today, so this path is idle.
 - **Oura heart rate.** Your real ring via Oura's cloud API (OAuth): heart rate on Home and a "heart racing" trigger
   (readings arrive minutes late; history never buzzes). Live BLE via `open_oura` is also built (needs re-pairing).
-- **Walking (built, not working today).** "Only while I'm walking" per trigger (Neon IMU step detection, tested on
-  synthetic data; unknown never blocks). With our Companion app version the IMU stream arrives as all zeros, so walking
-  always shows as unknown.
+- **Walking.** "Only while I'm walking" per trigger, from Neon IMU step detection (live on 2026-10-11, e.g.
+  "Walking · 120 steps/min" on the demo page). If the IMU drops out, walking shows as unknown, which never blocks a trigger.
 - **iOS app** for everyone: what buzzed and why, collapsed repeats, step-by-step trigger wizard, voice, Debug tools.
 - **Traces for every call**: the exact images Haiku saw, prompt, reply, timings and why each trigger did or didn't fire.
 

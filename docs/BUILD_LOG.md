@@ -587,3 +587,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - site/: one static `index.html` (inline CSS, Arial/system sans, #f9f8f7 / #ff4f5e / #1b1b1d, white rounded cards, mobile layout) + `site/assets/` (video opener still as hero, demo screen, 26 app screenshots as ~600 px JPEGs, app icon; 2 MB total). Screenshots from `docs/screenshots/redesign/` (newer than the copies in project files); -se/-xxl variants and exact duplicates (home.png, my-alerts.png) skipped.
 - `.github/workflows/pages.yml`: configure-pages + upload-pages-artifact (path `site`) + deploy-pages on pushes to main touching `site/`, or manual run.
 - Gotcha: enabling Pages from the cloud session failed: `gh api -X POST repos/jaidevshriram/spidey-sense/pages -f build_type=workflow` → HTTP 403 "Access to this GitHub API path is not permitted through this proxy." To enable: repo Settings → Pages → Source: GitHub Actions (private repos need a paid plan for Pages), then re-run the workflow.
+
+### 2026-10-11 13:25 PT: README/site: walking detection now works
+- The Neon IMU started streaming after the reconnect (demo page shows "Walking · 120 steps/min"), so the README limits table, the walking feature bullet, the diagram note and the site's limits/caption no longer say it's broken. Glasses mic is still off.

@@ -197,7 +197,7 @@ footer{margin:64px 0 0;padding:28px 0 40px;border-top:1px solid var(--line);colo
     </div>
     <div class="card no"><h3>Limits</h3>
       <ul class="clean">
-        <li><b>Walking detection does not work today.</b> The code exists, but the Neon IMU stream arrives as all zeros with our Companion app version. Walking shows as "unknown" and never blocks a trigger.</li>
+        <li><b>Walking detection needs the motion stream.</b> It works live (e.g. "Walking · 120 steps/min"), but if the glasses' IMU drops out, walking shows as "unknown" and never blocks a trigger.</li>
         <li><b>The glasses microphone does not work today.</b> The hearing code is built but gets no audio.</li>
         <li><b>Oura heart rate is only as fresh as the last sync.</b> Readings older than 15 min never buzz.</li>
         <li>Radar is paused. Bluetooth must run from Terminal.app on the Mac.</li>
@@ -226,7 +226,7 @@ footer{margin:64px 0 0;padding:28px 0 40px;border-top:1px solid var(--line);colo
     <figure class="shot"><img loading="lazy" src="assets/triggers.jpg" alt=""><figcaption>Spidey triggers<span>On/off per trigger</span></figcaption></figure>
     <figure class="shot"><img loading="lazy" src="assets/wizard-1-what.jpg" alt=""><figcaption>New trigger: what<span>Tiles or your own words</span></figcaption></figure>
     <figure class="shot"><img loading="lazy" src="assets/wizard-2-when.jpg" alt=""><figcaption>When to warn you<span>Only if you haven't noticed</span></figcaption></figure>
-    <figure class="shot"><img loading="lazy" src="assets/wizard-walking.jpg" alt=""><figcaption>Only while walking<span>Built; IMU sends zeros today</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-walking.jpg" alt=""><figcaption>Only while walking<span>Uses the glasses' motion sensor</span></figcaption></figure>
     <figure class="shot"><img loading="lazy" src="assets/wizard-3-wait.jpg" alt=""><figcaption>Wait to be sure?<span>Over-time triggers</span></figcaption></figure>
     <figure class="shot"><img loading="lazy" src="assets/wizard-4-feel-skip.jpg" alt=""><figcaption>How it should feel<span>Recommended feel</span></figcaption></figure>
     <figure class="shot"><img loading="lazy" src="assets/wizard-4-feel-customize.jpg" alt=""><figcaption>Customize the feel<span>"Try it" plays on the Dot</span></figcaption></figure>
