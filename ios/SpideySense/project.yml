@@ -1,0 +1,29 @@
+name: SpideySense
+options:
+  bundleIdPrefix: com.jaidev
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  SpideySense:
+    type: application
+    platform: iOS
+    sources: [SpideySense]
+    info:
+      path: SpideySense/Info.plist
+      properties:
+        CFBundleDisplayName: Spidey Sense
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSLocalNetworkUsageDescription: Connects to the Spidey Sense engine on your Mac
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaidev.spideysense
+        PRODUCT_NAME: SpideySense
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic

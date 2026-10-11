@@ -1,0 +1,22 @@
+# secrets
+.env
+.env.*
+# python
+.venv*/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+# runtime
+logs/
+**/logs/
+backend/rules*.json
+*.log
+# ios
+ios/**/build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+# misc
+*.zip
+.DS_Store

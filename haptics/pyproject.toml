@@ -1,0 +1,14 @@
+[project]
+name = "spidey-haptics"
+version = "0.1.0"
+description = "DataFeel Dots / El Jefe: patterns, Bluetooth (Nordic UART) transport, fast triggers"
+requires-python = ">=3.10"
+dependencies = ["datafeel", "minimalmodbus", "pyserial", "bleak"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["dots"]
+py-modules = ["spidey_haptics"]

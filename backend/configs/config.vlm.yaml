@@ -1,0 +1,45 @@
+# Haiku VLM on synthetic stills, with scripted gaze off/on each hazard. Console only.
+#   python3 backend/run.py --config backend/configs/config.vlm.yaml --seconds 21
+
+source:
+  type: fake
+  paths: [../../vlm/assets/street_car.jpg, ../../vlm/assets/hallway_empty.jpg, ../../vlm/assets/kitchen_knife.jpg]
+  hold_s: 7                     # each scene for 7 s -> 21 s cycle
+  fps: 15
+  gaze: script
+  gaze_script:                  # [t, x, y], normalized, top-left origin
+    - [0.0, 0.85, 0.40]         # street: looking at the right-hand building (car unseen)
+    - [3.5, 0.27, 0.60]         # street: looking at the car (seen)
+    - [7.0, 0.50, 0.50]         # hallway: nothing there
+    - [14.0, 0.20, 0.30]        # kitchen: looking at the cabinet (knife unseen)
+    - [17.5, 0.72, 0.72]        # kitchen: looking at the knife (seen)
+
+detector:
+  type: vlm
+  model: claude-haiku-5-5
+  max_side: 512
+  max_tokens: 150
+  min_interval_s: 0.5           # at most 2 calls/s; stale frames are dropped
+  env_file: ../../.env          # repo-root .env (relative to this file); only if ANTHROPIC_API_KEY is unset
+
+detect_every_s: 0               # the detector throttles itself
+rules_file: rules.vlm.json      # separate from the app-edited rules.json; falls back to `rules:` below
+
+rules:
+  - name: blindspot
+    feel: urgent
+    if: {unseen: true, min_urgency: 0.6}
+    cooldown_s: 3
+  - name: heads_up
+    feel: ambient
+    if: {unseen: true, max_urgency: 0.59}   # blindspot owns >= 0.6
+    cooldown_s: 6
+
+sink:
+  type: console
+
+log: logs/vlm_events.jsonl
+
+server:
+  enabled: true
+  port: 8765

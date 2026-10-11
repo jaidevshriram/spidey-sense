@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haptic Playground</title>
+<style>
+  :root { --fg:#111; --muted:#666; --line:#ddd; --accent:#1a5fd0; --stop:#d11; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#fff; color:var(--fg); font:15px/1.4 Arial, Helvetica, sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:#fff; border-bottom:1px solid var(--line);
+           padding:10px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0 auto 0 0; }
+  #stop { background:var(--stop); color:#fff; border:0; border-radius:8px; font-size:18px; font-weight:bold;
+          padding:12px 22px; cursor:pointer; }
+  main { max-width:980px; margin:0 auto; padding:12px 16px 40px; display:grid; gap:14px;
+         grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
+  section { border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  section h2 { font-size:16px; margin:0 0 10px; }
+  .wide { grid-column:1 / -1; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  label { color:var(--muted); font-size:13px; }
+  button { font:inherit; padding:7px 12px; border:1px solid var(--line); border-radius:7px; background:#f6f6f6; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  select, input[type=number] { font:inherit; padding:5px; border:1px solid var(--line); border-radius:6px; max-width:100%; }
+  input[type=range] { width:180px; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:14px; }
+  .kv b { font-weight:normal; color:var(--muted); }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#bbb; vertical-align:middle; }
+  .swatches { display:grid; grid-template-columns:repeat(8, 1fr); gap:6px; }
+  .swatches input { width:100%; height:34px; border:1px solid var(--line); border-radius:6px; padding:0; }
+  .slots { display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; }
+  .slots select { width:100%; }
+  .preset-urgent { background:#ffe5e5; } .preset-pulse { background:#ffe5f1; } .preset-ambient { background:#e5edff; }
+  canvas { width:100%; height:200px; border:1px solid var(--line); border-radius:6px; }
+  .legend span { margin-right:12px; font-size:13px; }
+  .warn { color:#a40; font-size:13px; }
+  #log { font:12px/1.5 Menlo, monospace; max-height:260px; overflow:auto; margin:0; }
+  #log .err { color:var(--stop); }
+  #toast { font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Haptic Playground</h1>
+  <span id="toast"></span>
+  <button id="stop" onclick="stopAll()">STOP ALL</button>
+</header>
+<main>
+  <section>
+    <h2>Connection</h2>
+    <div class="kv">
+      <b>Status</b><span><span id="cdot" class="dot"></span> <span id="cstat">…</span></span>
+      <b>Transport</b><span id="ctrans">…</span>
+      <b>Device</b><span id="cdev">…</span>
+      <b>Dot addresses</b><span id="cdots">…</span>
+      <b>Last command</b><span id="clast">–</span>
+    </div>
+    <div class="row"><label>Target dot</label><select id="addr"><option value="">all</option></select></div>
+  </section>
+
+  <section>
+    <h2>Light</h2>
+    <div class="row"><label>Mode</label>
+      <select id="ledmode">
+        <option value="global">global</option><option value="individual">individual</option>
+        <option value="breathe">breathe</option><option value="track_thermal">track thermal</option>
+        <option value="off">off</option>
+      </select>
+    </div>
+    <div class="row"><label>Global colour</label><input type="color" id="gcolor" value="#00ff66"></div>
+    <label>Individual LEDs (individual mode)</label>
+    <div class="swatches" id="swatches"></div>
+    <div class="row"><button class="primary" onclick="applyLed()">Apply light</button></div>
+  </section>
+
+  <section>
+    <h2>Vibration: sequence</h2>
+    <div class="row">
+      <button class="preset-urgent" onclick="preset('urgent')">urgent</button>
+      <button class="preset-pulse" onclick="preset('pulse')">pulse</button>
+      <button class="preset-ambient" onclick="preset('ambient')">ambient</button>
+    </div>
+    <label>8 slots: a waveform or "Rest x s" (empty slots are ignored)</label>
+    <div class="slots" id="slots"></div>
+    <div class="row">
+      <button class="primary" onclick="playSeq()">Play sequence</button>
+      <button onclick="loadPreset()">Load preset ▸</button>
+      <select id="presetpick"><option>urgent</option><option>pulse</option><option>ambient</option></select>
+    </div>
+  </section>
+
+  <section>
+    <h2>Vibration: manual</h2>
+    <div class="row"><label>Frequency</label><input type="range" id="freq" min="50" max="300" value="170"
+      oninput="fv.textContent=this.value"><span id="fv">170</span> Hz</div>
+    <div class="row"><label>Intensity</label><input type="range" id="inten" min="0" max="1" step="0.05" value="0.5"
+      oninput="iv.textContent=this.value"><span id="iv">0.5</span></div>
+    <div class="row">
+      <button class="primary" onclick="manual(true)">Start</button>
+      <button onclick="manual(false)">Stop</button>
+      <label><input type="checkbox" id="live"> live update while dragging</label>
+    </div>
+  </section>
+
+  <section class="wide">
+    <h2>Thermal</h2>
+    <div class="row">
+      <label>Intensity</label>
+      <input type="range" id="tint" min="-1" max="1" step="0.1" value="0" oninput="tv.textContent=(+this.value).toFixed(1)">
+      <span id="tv">0.0</span> <span class="warn">(−1 cool … +1 heat)</span>
+      <button class="primary" onclick="thermal('manual')">Apply intensity</button>
+    </div>
+    <div class="row">
+      <label>Target skin temp</label>
+      <input type="number" id="target" min="20" max="40" step="0.5" value="34"> °C
+      <button class="primary" onclick="thermal('target')">Hold target</button>
+      <button onclick="thermal('off')">Thermal off</button>
+    </div>
+    <div class="warn" id="limits"></div>
+    <div class="kv" style="margin:8px 0">
+      <b>Session</b><span id="tsess">off</span>
+      <b>Time to reach</b><span id="treach">–</span>
+      <b>Rate</b><span id="trate">–</span>
+    </div>
+    <canvas id="chart" width="900" height="200"></canvas>
+    <div class="legend"><span style="color:#d33">● skin °C</span><span style="color:#36c">● heatsink °C</span>
+      <span style="color:#393">● thermal power</span><span id="now"></span></div>
+  </section>
+
+  <section class="wide">
+    <h2>Command log</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let waveforms = [], presets = {}, samples = [], lastT = 0, status = null;
+
+async function api(path, body, method) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(path, body === undefined && !method ? {} :
+      {method: method || 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body ?? {})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    if (j.ms !== undefined) toast(`${j.cmd}: device ${j.ms} ms, round trip ${Math.round(performance.now() - t0)} ms` + (j.ok ? '' : ` ERROR ${j.error}`));
+    return j;
+  } catch (e) { toast('Error: ' + e.message); throw e; }
+}
+function toast(s) { $('toast').textContent = s; }
+const addr = () => $('addr').value === '' ? null : +$('addr').value;
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+
+async function init() {
+  status = await api('/api/status');
+  $('ctrans').textContent = status.transport; $('cdev').textContent = status.device;
+  $('cdots').textContent = status.dots.join(', ');
+  status.dots.forEach(d => $('addr').insertAdjacentHTML('beforeend', `<option value="${d}">dot ${d}</option>`));
+  const L = status.limits;
+  $('limits').textContent = `Safety: target capped at ${L.target_cap_c} °C · auto-off after ${L.thermal_max_s} s · ` +
+    `cut-off if skin > ${L.skin_cutoff_c} °C · off when this page closes or the server stops.`;
+  const w = await api('/api/waveforms'); waveforms = w.waveforms; presets = w.presets;
+  const opts = ['<option value="">—</option>'].concat(
+    [0.1, 0.2, 0.3, 0.5, 0.8, 1.0, 1.27].map(s => `<option value="${s}">Rest ${s} s</option>`),
+    waveforms.map(n => `<option>${n}</option>`)).join('');
+  for (let i = 0; i < 8; i++) $('slots').insertAdjacentHTML('beforeend', `<select id="s${i}">${opts}</select>`);
+  const cols = ['#ff0000', '#ff8800', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#8800ff', '#ff00ff'];
+  cols.forEach((c, i) => $('swatches').insertAdjacentHTML('beforeend', `<input type="color" id="led${i}" value="${c}">`));
+  loadPreset();
+  ['freq', 'inten'].forEach(id => $(id).addEventListener('change', () => { if ($('live').checked) manual(true); }));
+  poll(); setInterval(poll, 500); setInterval(refreshLog, 1500);
+}
+
+function applyLed() {
+  const mode = $('ledmode').value;
+  api('/api/led', {mode, rgb: hex($('gcolor').value), address: addr(),
+    individual: [...Array(8).keys()].map(i => hex($('led' + i).value))});
+}
+function preset(name) { api(`/api/vibrate/preset/${name}` + (addr() ? `?address=${addr()}` : '')); }
+function loadPreset() {
+  const codes = presets[$('presetpick').value] || [];
+  for (let i = 0; i < 8; i++) {
+    const c = codes[i]; let v = '';
+    if (c >= 0x80) v = String(+((c - 0x80) / 100).toFixed(2));
+    else if (c) v = waveforms.find(n => n === nameFor(c)) || '';
+    const sel = $('s' + i);
+    if (v && ![...sel.options].some(o => o.value === v)) sel.insertAdjacentHTML('beforeend', `<option value="${v}">Rest ${v} s</option>`);
+    sel.value = v;
+  }
+}
+let codeNames = null;
+function nameFor(code) { return (codeNames || {})[code]; }
+function playSeq() {
+  const slots = [...Array(8).keys()].map(i => $('s' + i).value).filter(v => v !== '')
+    .map(v => isNaN(+v) ? v : +v);
+  api('/api/vibrate/sequence', {slots, address: addr()});
+}
+function manual(on) {
+  api('/api/vibrate/manual', {on, frequency: +$('freq').value, intensity: +$('inten').value, address: addr()});
+}
+function thermal(mode) {
+  api('/api/thermal', {mode, intensity: +$('tint').value, target_c: +$('target').value, address: addr()});
+}
+function stopAll() { api('/api/stop', {}); }
+window.addEventListener('pagehide', () => navigator.sendBeacon('/api/stop', new Blob(['{}'], {type: 'application/json'})));
+
+async function poll() {
+  try {
+    const j = await (await fetch('/api/telemetry?since=' + lastT)).json();
+    $('cdot').style.background = '#2a2'; $('cstat').textContent = 'connected';
+    if (j.last_ms != null) $('clast').textContent = j.last_ms + ' ms';
+    for (const s of j.samples) { samples.push(s); lastT = s.t; }
+    samples = samples.filter(s => s.t > lastT - 120);
+    const th = j.thermal;
+    $('tsess').textContent = th ? `${th.mode} ${th.value} · ${th.elapsed_s}s elapsed · auto-off in ${th.remaining_s}s` : 'off';
+    if (th) {
+      const r = Object.entries(th.reached).map(([k, v]) => `${k}: ${v}s`).join(' · ');
+      $('treach').textContent = r || `waiting (base ${th.base ?? '…'} °C)`;
+      $('trate').textContent = th.rate_c_per_s != null ? `${th.rate_c_per_s} °C/s` : '–';
+    }
+    const last = samples[samples.length - 1];
+    if (last) $('now').textContent = `now: skin ${last.skin} °C · sink ${last.sink} °C · power ${last.power}`;
+    draw();
+  } catch (e) { $('cdot').style.background = '#d22'; $('cstat').textContent = 'server unreachable'; }
+}
+
+function draw() {
+  const c = $('chart'), g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  if (samples.length < 2) return;
+  const temps = samples.flatMap(s => [s.skin, s.sink]);
+  let lo = Math.floor(Math.min(...temps) - 1), hi = Math.ceil(Math.max(...temps) + 1);
+  const t1 = samples[samples.length - 1].t, t0 = t1 - 120;
+  const x = t => 40 + (t - t0) / 120 * (W - 50), y = v => H - 20 - (v - lo) / (hi - lo) * (H - 30);
+  g.strokeStyle = '#eee'; g.fillStyle = '#888'; g.font = '11px Arial';
+  for (let v = lo; v <= hi; v += Math.max(1, Math.round((hi - lo) / 5))) {
+    g.beginPath(); g.moveTo(40, y(v)); g.lineTo(W, y(v)); g.stroke(); g.fillText(v + '°', 4, y(v) + 4);
+  }
+  g.fillText('−120 s', 40, H - 4); g.fillText('now', W - 24, H - 4);
+  const pw = samples.map(s => Math.abs(s.power)), pmax = Math.max(1e-3, ...pw);
+  const line = (col, f) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
+    samples.forEach((s, i) => (i ? g.lineTo : g.moveTo).call(g, x(s.t), f(s))); g.stroke(); };
+  line('#d33', s => y(s.skin)); line('#36c', s => y(s.sink));
+  line('#393', s => H - 20 - (s.power / pmax) * (H - 30) * 0.5 - (H - 30) * 0.25);
+}
+
+async function refreshLog() {
+  const j = await (await fetch('/api/log')).json();
+  $('log').innerHTML = j.log.slice(0, 80).map(e => {
+    const t = new Date(e.ts * 1000).toLocaleTimeString();
+    const extra = Object.entries(e).filter(([k]) => !['ts', 'cmd', 'ms', 'ok', 'error'].includes(k) && e[k] != null)
+      .map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ');
+    return `<div class="${e.ok ? '' : 'err'}">${t}  ${e.cmd.padEnd(16)} ${String(e.ms).padStart(6)} ms  ${extra}${e.ok ? '' : '  ' + e.error}</div>`;
+  }).join('');
+}
+
+fetch('/api/waveforms').then(r => r.json()).then(w => {
+  // map numeric codes back to names for "Load preset" (server sends names in order of value)
+  codeNames = {}; fetch('/api/codes').then(r => r.ok ? r.json() : {}).then(m => Object.assign(codeNames, m)).catch(() => {});
+});
+init();
+</script>
+</body>
+</html>
