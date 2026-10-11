@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:44px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Architecture</p>
+<h1 class="h1" style="font-size:42px;">Source → detector → triggers → haptics.</h1>
+<svg viewBox="0 0 1120 470" width="1120" height="470" style="display:block; margin-top:18px;">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#FF4D5E"/></marker>
+<marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5AA9FF"/></marker>
+</defs>
+<text x="110" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="12" letter-spacing="2" fill="#5C6375">WORN / AROUND YOU</text>
+<text x="560" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="12" letter-spacing="2" fill="#5C6375">MACBOOK (THE BRAIN)</text>
+<text x="1010" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="12" letter-spacing="2" fill="#5C6375">FEEDBACK</text>
+<rect x="330" y="30" width="460" height="430" rx="18" fill="none" stroke="#242A37" stroke-dasharray="6 6"/>
+<rect x="10" y="40" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="110.0" y="68.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Neon glasses</text><text x="110.0" y="90.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">scene cam + gaze 130 Hz</text>
+<rect x="10" y="150" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="110.0" y="178.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Companion phone</text><text x="110.0" y="200.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">Real-time API :8080</text>
+<rect x="10" y="330" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="110.0" y="358.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Infineon radar</text><text x="110.0" y="380.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">radar server ws :8090</text>
+<line x1="110" y1="104" x2="110" y2="148" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/><text x="140" y="131" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#FF4D5E">USB-C</text>
+<rect x="380" y="50" width="360" height="62" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="560.0" y="77.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Source</text><text x="560.0" y="99.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">Frame(image, gaze) · capture-time stamped</text>
+<rect x="380" y="150" width="360" height="72" rx="12" fill="#151923" stroke="#FF4D5E" stroke-width="1.5"/><text x="560.0" y="182.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Detector · Claude Haiku</text><text x="560.0" y="204.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">1 call/tick · hazards + all triggers</text>
+<rect x="380" y="262" width="360" height="62" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="560.0" y="289.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Triggers</text><text x="560.0" y="311.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">gaze history · trend memory · cooldowns</text>
+<rect x="380" y="364" width="360" height="62" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="560.0" y="391.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Haptic sink</text><text x="560.0" y="413.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">fastfire · intensity · safety caps</text>
+<line x1="210" y1="182" x2="378" y2="90" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/><text x="290" y="122" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#FF4D5E">Wi-Fi hotspot</text>
+<line x1="210" y1="362" x2="378" y2="293" stroke="#5AA9FF" stroke-width="2" marker-end="url(#ahb)"/><text x="290" y="312" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#5AA9FF">radar targets</text>
+<line x1="560" y1="112" x2="560" y2="148" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="560" y1="222" x2="560" y2="260" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="560" y1="324" x2="560" y2="362" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="910" y="330" width="200" height="64" rx="12" fill="#151923" stroke="#FF4D5E" stroke-width="1.5"/><text x="1010.0" y="358.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">El Jefe → Dot</text><text x="1010.0" y="380.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">buzz · light · warmth</text>
+<rect x="910" y="150" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="1010.0" y="178.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">iPhone app</text><text x="1010.0" y="200.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">log · senses · haptics</text>
+<line x1="740" y1="395" x2="908" y2="365" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/><text x="826" y="370" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#FF4D5E">Bluetooth LE</text>
+<line x1="740" y1="290" x2="908" y2="196" stroke="#5AA9FF" stroke-width="2" marker-end="url(#ahb)"/><text x="835" y="228" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#5AA9FF">WebSocket :8765</text>
+<line x1="908" y1="172" x2="742" y2="172" stroke="#5AA9FF" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#ahb)"/><text x="826" y="164" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#5AA9FF">edit triggers</text>
+</svg>
+
+<aside class="notes">The engine is a simple loop: a source gives frames with gaze, the detector asks Haiku about them, the triggers decide whether to fire, and the sink plays a pattern on the Dot over Bluetooth. Every stage is swappable in config, fake or real, which is how we built and tested it all in parallel. Every event also goes out over a WebSocket to the phone.</aside>
+</section>
+</x-dc>
+</body>
+</html>

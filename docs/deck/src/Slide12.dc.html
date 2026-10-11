@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Haptic vocabulary</p>
+<h1 class="h1" style="font-size:46px;">How urgent, felt without looking.</h1>
+<div style="display:flex; gap:16px; margin-top:28px;">
+  <div class="card" style="flex:1; padding:22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><span class="mono" style="font-size:20px; font-weight:700; color:#FF4D5E;">urgent</span>
+  <span style="width:22px; height:22px; border-radius:50%; background:#FF3B4E; box-shadow:0 0 16px #FF3B4E;"></span></div>
+  <div style="margin-top:12px;"><svg viewBox="0 0 220 60" width="220" height="60"><path d="M0 30h20l4-24 4 48 4-24h10l4-24 4 48 4-24h10l4-24 4 48 4-24h12 l2-26 2 52 2-52 2 52 2-52 2 52 2-52 2 52 2-52 2 52 2-26h40" fill="none" stroke="#FF4D5E" stroke-width="2.5" stroke-linejoin="round"/></svg></div><p style="margin-top:8px;">Triple click + strong buzz. Red.</p></div>
+  <div class="card" style="flex:1; padding:22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><span class="mono" style="font-size:20px; font-weight:700; color:#FF7EB6;">pulse</span>
+  <span style="width:22px; height:22px; border-radius:50%; background:#FF5FA8; box-shadow:0 0 16px #FF5FA8;"></span></div>
+  <div style="margin-top:12px;"><svg viewBox="0 0 220 60" width="220" height="60"><path d="M0 30h30l5-18 5 36 5-18h8l5-18 5 36 5-18h50l5-18 5 36 5-18h8l5-18 5 36 5-18h44" fill="none" stroke="#FF7EB6" stroke-width="2.5" stroke-linejoin="round"/></svg></div><p style="margin-top:8px;">Heartbeat double clicks. Pink.</p></div>
+  <div class="card" style="flex:1; padding:22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><span class="mono" style="font-size:20px; font-weight:700; color:#5AA9FF;">ambient</span>
+  <span style="width:22px; height:22px; border-radius:50%; background:#3D8BFF; box-shadow:0 0 16px #3D8BFF;"></span></div>
+  <div style="margin-top:12px;"><svg viewBox="0 0 220 60" width="220" height="60"><path d="M0 30 C20 18 40 18 60 30 S100 42 120 30 S160 18 180 30 S210 40 220 30" fill="none" stroke="#5AA9FF" stroke-width="2.5" stroke-linejoin="round"/></svg></div><p style="margin-top:8px;">Soft hum. Blue.</p></div>
+</div>
+<div style="display:flex; gap:16px; margin-top:16px;">
+  <div class="card" style="flex:1.3;"><div class="mono" style="font-size:13px; color:#8C95A8;">INTENSITY = SWAP TO A WEAKER WAVEFORM</div>
+    <div class="mono" style="font-size:16px; margin-top:10px;">BUZZ1_P100 → BUZZ3_P60 → BUZZ5_P20 · 0 = light only</div></div>
+  <div class="card" style="flex:1;"><div class="mono" style="font-size:13px; color:#8C95A8;">THERMAL SAFETY</div>
+    <div style="font-size:16px; margin-top:10px;">Cap 40 °C · off &gt; 41 °C skin · auto-off 30 s</div></div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 2 · HOW IT WORKS</span></div>
+<aside class="notes">The Dot has three channels: vibration, light and heat. We built a small vocabulary: urgent is a sharp triple click and strong buzz in red, pulse is a heartbeat in pink, ambient is a soft blue hum. Intensity works by swapping to weaker waveforms, and warmth is hard-capped at 40 degrees with automatic shut-offs.</aside>
+</section>
+</x-dc>
+</body>
+</html>

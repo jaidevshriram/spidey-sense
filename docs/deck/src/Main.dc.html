@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<div style="position:absolute; right:-120px; top:-120px; width:620px; height:620px; opacity:.5;">
+  <svg viewBox="0 0 600 600" width="620" height="620" fill="none" stroke="#FF4D5E" stroke-opacity=".35" stroke-width="1.2">
+    <circle cx="300" cy="300" r="60"/><circle cx="300" cy="300" r="120"/><circle cx="300" cy="300" r="190"/><circle cx="300" cy="300" r="270"/>
+    <path d="M300 0v600M0 300h600M88 88l424 424M512 88L88 512"/>
+  </svg>
+</div>
+<div style="display:flex; gap:56px; align-items:center; height:100%;">
+  <div style="flex:1; position:relative; z-index:1;">
+    <p class="eyebrow">Interface Hackathon · Oct 2026 · Jaidev</p>
+    <h1 class="h1" style="font-size:96px; letter-spacing:-.035em;">Spidey<br><span class="red">Sense</span></h1>
+    <p class="sub" style="font-size:26px; color:rgba(244,246,250,.8); max-width:520px;">Feel the things you haven't seen.</p>
+    <div style="display:flex; gap:10px; margin-top:28px; flex-wrap:wrap;">
+      <span class="chip">eye tracking</span><span class="chip">vision AI</span><span class="chip">haptics</span><span class="chip">radar</span>
+    </div>
+  </div>
+  <figure style="margin:0; width:500px; position:relative; z-index:1;">
+    <img src="neon-frame.jpg" style="width:500px; border-radius:16px; border:1px solid #2C3444; display:block; box-shadow:0 20px 50px rgba(0,0,0,.55);">
+    <figcaption class="mono" style="font-size:13px; color:rgba(244,246,250,.5); margin-top:10px;">Real Neon scene-camera frame · red circle = where the wearer is looking</figcaption>
+  </figure>
+</div>
+
+<aside class="notes">Spidey Sense is a wearable sixth sense. Eye-tracking glasses know where you're looking, an AI notices what you haven't, and a little haptic dot on your body tells you. This frame is from the real glasses: the red circle is my gaze, live.</aside>
+</section>
+</x-dc>
+</body>
+</html>

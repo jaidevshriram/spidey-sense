@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">The detector</p>
+<h1 class="h1" style="font-size:46px;">One Haiku call per tick. Everything in it.</h1>
+<div style="display:flex; gap:40px; margin-top:34px;">
+  <div style="flex:1;">
+    <div class="card" style="font-size:17px; line-height:1.55;">
+      <div class="mono" style="font-size:13px; color:#8C95A8; margin-bottom:8px;">IN</div>
+      newest frame, 384 px, gaze drawn in<br>+ 3 labelled frames for temporal triggers<br>+ built-in hazards <b>and every plain-English trigger</b>
+      <div class="mono" style="font-size:13px; color:#8C95A8; margin:16px 0 8px;">OUT (streamed, strict JSON)</div>
+      <span class="red mono" style="font-size:15px;">hazard · urgency · x · seen_by_user</span> → act now<br>
+      <span class="mono" style="font-size:15px; color:#C9D1E0;">triggers · bbox · why</span> → follows
+    </div>
+  </div>
+  <div style="flex:1.05;"><svg viewBox="0 0 560 230" width="560" height="230">
+<text x="0" y="14" font-family="JetBrains Mono" font-size="12" fill="#8C95A8">calls launched every 0.4 s on the newest frame · ≤ 2 in flight</text>
+
+<rect x="0" y="34" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="224" y="34" width="64" height="30" rx="6" fill="#7A2430"/>
+<text x="8" y="54" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 1 · early fields</text>
+
+<rect x="100" y="74" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="324" y="74" width="64" height="30" rx="6" fill="#7A2430"/>
+<text x="108" y="94" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 2</text>
+
+<rect x="200" y="114" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="424" y="114" width="64" height="30" rx="6" fill="#7A2430"/>
+<text x="208" y="134" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 3</text>
+
+<rect x="300" y="154" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="524" y="154" width="36" height="30" rx="6" fill="#7A2430"/>
+<text x="308" y="174" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 4</text>
+<line x1="0" y1="205" x2="560" y2="205" stroke="#2C3444"/>
+<text x="0" y="224" font-family="JetBrains Mono" font-size="11" fill="#5C6375">0 s</text>
+<text x="220" y="224" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#FF4D5E">~0.9 s early</text>
+<text x="292" y="224" font-family="JetBrains Mono" font-size="11" fill="#C9D1E0">~1.15 s full</text>
+</svg>
+    <p style="font-size:17px; color:rgba(244,246,250,.62); margin:14px 0 0;">Frame → cue <b style="color:#fff;">0.92 s median</b>, 1.20 s p90 (was 1.28 s). ~3 results/s, 125/125 correct on test scenes.</p>
+  </div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 2 · HOW IT WORKS</span></div>
+<aside class="notes">There's only one model path. Each tick we send Haiku the newest frame plus every trigger the user wrote in plain English, all in one call. The answer streams, and the urgent fields come first, so built-in hazards fire before the rest of the JSON arrives. Two calls overlap, which got us from 1.28 to 0.92 seconds median.</aside>
+</section>
+</x-dc>
+</body>
+</html>

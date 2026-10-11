@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">The idea</p>
+<h1 class="h1">A spidey sense you can wear.</h1>
+<p class="sub">Hands-free. No screen to check. You just feel it.</p>
+<div style="display:flex; gap:18px; margin-top:44px; align-items:stretch;">
+  <div class="card" style="flex:1; padding:28px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="mono" style="font-size:40px; font-weight:700; color:#242A37;">01</span></div>
+  <h3 style="font-size:28px; margin-top:18px;">Glasses watch your gaze</h3><p style="font-size:18px;">Eye-tracking glasses see the scene and exactly where you're looking.</p></div>
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; align-self:center;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  <div class="card" style="flex:1; padding:28px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 1 5 3 3 0 0 0 5 3V4z"/><path d="M12 4a3 3 0 0 1 3 3 3 3 0 0 1 3 3 3 3 0 0 1-1 5 3 3 0 0 1-5 3"/></svg><span class="mono" style="font-size:40px; font-weight:700; color:#242A37;">02</span></div>
+  <h3 style="font-size:28px; margin-top:18px;">AI spots the unnoticed</h3><p style="font-size:18px;">A vision model finds hazards, and checks whether you've looked at them.</p></div>
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; align-self:center;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  <div class="card" style="flex:1; padding:28px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg><span class="mono" style="font-size:40px; font-weight:700; color:#242A37;">03</span></div>
+  <h3 style="font-size:28px; margin-top:18px;">A dot on your skin</h3><p style="font-size:18px;">Vibration pattern + coloured light + warmth tell you what and how urgent.</p></div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 1 · PITCH</span></div>
+<aside class="notes">Three pieces. The glasses see what you see and where your eyes are. Claude looks at each frame and asks: is there something here you haven't noticed? If so, a small dot on your body buzzes, glows, or warms up, so you get the message without looking at a screen.</aside>
+</section>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Who it's for · where it goes</p>
+<h1 class="h1">Anyone whose eyes can't be everywhere.</h1>
+<div style="display:flex; gap:48px; margin-top:40px;">
+  <div style="flex:1.2; display:grid; grid-template-columns:1fr 1fr; gap:30px 28px;">
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9L12 17h3M14 5h3"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Cyclists</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">Blind-spot traffic, doors opening.</div></div></div>
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6C3.9 8.4 2 12 2 12s3.6 6 10 6c1.6 0 3-.4 4.3-1"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Low-vision users</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">A nudge toward what the eyes miss.</div></div></div>
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Workers near machinery</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">Forklifts and moving parts outside gaze.</div></div></div>
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"/><path d="M12 8v6M12 14l-3 6M12 14l3 6M12 10l-4 2M12 10l4 2"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Parents</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">Kids near water, roads, stairs.</div></div></div>
+  </div>
+  <div class="card" style="flex:1; padding:28px;">
+    <div class="eyebrow" style="margin-bottom:18px;">Next</div>
+    <div style="display:flex; gap:14px; align-items:center; margin-bottom:22px;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5AA9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 0 0-7.1 7.1L12 21.5l8.8-8.8a5 5 0 0 0 0-7.1z"/><path d="M3 12h4l2-3 3 6 2-3h7"/></svg><div style="font-size:19px;"><b>Body senses</b><br><span style="color:rgba(244,246,250,.62); font-size:16px;">Oura heart rate as a trigger source</span></div></div>
+    <div style="display:flex; gap:14px; align-items:center; margin-bottom:22px;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5AA9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg><div style="font-size:19px;"><b>Phone-only version</b><br><span style="color:rgba(244,246,250,.62); font-size:16px;">App talks to the Dot over Bluetooth directly</span></div></div>
+    <div style="display:flex; gap:14px; align-items:center;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5AA9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/><circle cx="12" cy="12" r="1"/></svg><div style="font-size:19px;"><b>More senses</b><br><span style="color:rgba(244,246,250,.62); font-size:16px;">Any sensor can feed the same triggers</span></div></div>
+  </div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 1 · PITCH</span></div>
+<aside class="notes">Cyclists, people with low vision, workers around machinery, and parents all have the same problem: something important happens where they aren't looking. Next steps are body senses like heart rate from an Oura ring, and a phone-only version where the app drives the Dot directly.</aside>
+</section>
+</x-dc>
+</body>
+</html>

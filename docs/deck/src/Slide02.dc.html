@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:radial-gradient(120% 120% at 85% 10%, #E5243B 0%, #9E0F22 45%, #3A0710 100%); color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+<div style="position:absolute; inset:0; background-image:radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px); background-size:22px 22px; pointer-events:none;"></div>
+<div style="position:relative; display:flex; flex-direction:column; justify-content:center; height:100%;">
+  <p class="eyebrow" style="color:#FFD2D7;">The problem</p>
+  <h1 class="h1" style="font-size:60px; color:#fff;">We only notice<br>what we look at.</h1>
+  <p class="sub" style="color:rgba(255,255,255,.75);">The dangerous thing is usually the one outside your attention.</p>
+  <div style="display:flex; gap:22px; margin-top:40px;">
+    <div style="flex:1; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px;">
+  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9L12 17h3M14 5h3"/></svg>
+  <h3 style="font-family:'Space Grotesk',sans-serif; font-size:26px; margin:16px 0 6px; font-weight:600;">The blind spot</h3>
+  <p style="margin:0; font-size:17px; line-height:1.4; color:rgba(255,255,255,.75);">A bike closing in on your left while you watch the road ahead.</p></div>
+    <div style="flex:1; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px;">
+  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="2.5"/><path d="M9 9v6l-3 6M9 15l3 6M9 11l-4 2M9 11l4 2"/><path d="M17 10c2 1 3 3 3 5M15.5 12.5c1 .6 1.6 1.6 1.6 2.6"/></svg>
+  <h3 style="font-family:'Space Grotesk',sans-serif; font-size:26px; margin:16px 0 6px; font-weight:600;">Behind you</h3>
+  <p style="margin:0; font-size:17px; line-height:1.4; color:rgba(255,255,255,.75);">Someone walking up from behind, where no eye can see.</p></div>
+    <div style="flex:1; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px;">
+  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2"/><path d="M8 7v5l-2 4M8 12l2 4M8 9l-3 1M8 9l3 1"/><path d="M2 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/></svg>
+  <h3 style="font-family:'Space Grotesk',sans-serif; font-size:26px; margin:16px 0 6px; font-weight:600;">Near the water</h3>
+  <p style="margin:0; font-size:17px; line-height:1.4; color:rgba(255,255,255,.75);">A child drifting toward the pool edge while you look away.</p></div>
+  </div>
+</div>
+<aside class="notes">Attention is a spotlight: we only really notice what we look at. The things that hurt us are usually outside that spotlight, like a bike in the blind spot, someone coming up behind, or a kid edging toward the water.</aside>
+</section>
+</x-dc>
+</body>
+</html>

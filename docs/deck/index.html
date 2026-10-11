@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spidey Sense</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --rail-w: 188px; --thumb-w: 152px; --slide-w: 1280px; --slide-h: 720px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body { background: #07080C; font-family: 'Inter', system-ui, sans-serif; }
+
+  .deck { display: flex; height: 100%; }
+
+  .rail {
+    width: var(--rail-w); flex-shrink: 0; height: 100%; overflow-y: auto;
+    background: #0E1118; border-right: 1px solid #1E2431;
+    padding: 14px 0 24px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .rail::-webkit-scrollbar { width: 8px; }
+  .rail::-webkit-scrollbar-thumb { background: #2C3444; border-radius: 4px; }
+  .thumb {
+    position: relative; display: block; padding: 0; border: 2px solid transparent;
+    border-radius: 8px; background: #0B0D12; cursor: pointer; flex-shrink: 0; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(20,32,46,.13); transition: border-color .15s, box-shadow .15s;
+  }
+  .thumb:hover { border-color: #5C6375; }
+  .thumb.on { border-color: #FF4D5E; box-shadow: 0 2px 10px rgba(255,77,94,.35); }
+  .thumb-inner { position: relative; overflow: hidden; }
+  /* Authored slides carry an inline position:relative, which outranks a plain
+     stylesheet rule — overriding it needs !important. */
+  .thumb-inner .slide {
+    position: absolute !important; top: 0 !important; left: 0 !important;
+    transform-origin: top left !important;
+  }
+  .thumb-num {
+    position: absolute; left: 5px; bottom: 4px; z-index: 2;
+    font-size: 10px; font-weight: 800; color: #fff; background: rgba(20,32,46,.62);
+    border-radius: 5px; padding: 1px 6px; line-height: 1.5;
+  }
+
+  .col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .stage { flex: 1; position: relative; overflow: hidden; background: #07080C; }
+  .slide { width: var(--slide-w) !important; height: var(--slide-h) !important; }
+  .stage > .slide {
+    position: absolute !important; left: 0 !important; top: 0 !important;
+    transform-origin: top left;
+    visibility: hidden; opacity: 0;
+  }
+  .stage > .slide.active { visibility: visible; opacity: 1; }
+
+  .arrow-btn {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 10;
+    width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+    background: rgba(30,36,49,.9); box-shadow: 0 2px 10px rgba(0,0,0,.4);
+    font-size: 21px; font-weight: 800; color: #FF4D5E; line-height: 1;
+    opacity: 0; transition: opacity .2s;
+  }
+  .stage:hover .arrow-btn { opacity: 1; }
+  .arrow-btn:disabled { opacity: 0 !important; }
+  .prev { left: 16px; } .next { right: 16px; }
+
+  .counter {
+    position: absolute; right: 16px; bottom: 14px; z-index: 10;
+    font-size: 13px; font-weight: 700; color: #8C95A8;
+    background: rgba(30,36,49,.9); border-radius: 20px; padding: 4px 12px;
+  }
+
+
+  .slide .notes { display: none !important; }
+  .notes-panel { display: none; height: 150px; flex-shrink: 0; overflow-y: auto; background: #0E1118;
+    border-top: 2px solid #FF4D5E; color: #E4E8F0; font-size: 19px; line-height: 1.5; padding: 16px 28px; }
+  .notes-panel .lbl { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .14em; color: #FF4D5E; margin-bottom: 6px; }
+  body.show-notes .notes-panel { display: block; }
+  .hint { position: absolute; left: 16px; bottom: 14px; z-index: 10; font-size: 12px; color: #5C6375; font-family: 'JetBrains Mono', monospace; }
+  @media print { .notes-panel, .hint { display: none !important; } }
+
+  @media (max-width: 820px) { .rail { display: none; } }
+
+  @media print {
+    html, body { overflow: visible; height: auto; }
+    .rail, .arrow-btn, .counter { display: none; }
+    .stage { overflow: visible; }
+    .stage > .slide {
+      visibility: visible !important; opacity: 1 !important;
+      position: static !important; transform: none !important;
+      page-break-after: always; break-after: page;
+    }
+  }
+.slide-1 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-1 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-1 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-1 .red { color:#FF4D5E; }.slide-1 .blue { color:#5AA9FF; }.slide-1 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-1 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-1 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-1 .mono { font-family:'JetBrains Mono', monospace; }.slide-1 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-1 .tbd { color:#FFB020; font-weight:700; }.slide-1 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-1 .notes { display:none; }
+  
+
+.slide-2 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-2 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-2 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-2 .red { color:#FF4D5E; }.slide-2 .blue { color:#5AA9FF; }.slide-2 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-2 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-2 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-2 .mono { font-family:'JetBrains Mono', monospace; }.slide-2 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-2 .tbd { color:#FFB020; font-weight:700; }.slide-2 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-2 .notes { display:none; }
+  
+
+.slide-3 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-3 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-3 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-3 .red { color:#FF4D5E; }.slide-3 .blue { color:#5AA9FF; }.slide-3 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-3 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-3 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-3 .mono { font-family:'JetBrains Mono', monospace; }.slide-3 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-3 .tbd { color:#FFB020; font-weight:700; }.slide-3 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-3 .notes { display:none; }
+  
+
+.slide-4 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-4 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-4 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-4 .red { color:#FF4D5E; }.slide-4 .blue { color:#5AA9FF; }.slide-4 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-4 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-4 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-4 .mono { font-family:'JetBrains Mono', monospace; }.slide-4 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-4 .tbd { color:#FFB020; font-weight:700; }.slide-4 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-4 .notes { display:none; }
+  
+
+.slide-5 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-5 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-5 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-5 .red { color:#FF4D5E; }.slide-5 .blue { color:#5AA9FF; }.slide-5 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-5 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-5 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-5 .mono { font-family:'JetBrains Mono', monospace; }.slide-5 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-5 .tbd { color:#FFB020; font-weight:700; }.slide-5 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-5 .notes { display:none; }
+  
+
+.slide-6 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-6 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-6 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-6 .red { color:#FF4D5E; }.slide-6 .blue { color:#5AA9FF; }.slide-6 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-6 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-6 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-6 .mono { font-family:'JetBrains Mono', monospace; }.slide-6 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-6 .tbd { color:#FFB020; font-weight:700; }.slide-6 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-6 .notes { display:none; }
+  
+
+.slide-7 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-7 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-7 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-7 .red { color:#FF4D5E; }.slide-7 .blue { color:#5AA9FF; }.slide-7 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-7 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-7 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-7 .mono { font-family:'JetBrains Mono', monospace; }.slide-7 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-7 .tbd { color:#FFB020; font-weight:700; }.slide-7 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-7 .notes { display:none; }
+  
+
+.slide-8 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-8 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-8 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-8 .red { color:#FF4D5E; }.slide-8 .blue { color:#5AA9FF; }.slide-8 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-8 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-8 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-8 .mono { font-family:'JetBrains Mono', monospace; }.slide-8 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-8 .tbd { color:#FFB020; font-weight:700; }.slide-8 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-8 .notes { display:none; }
+  
+
+.slide-9 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-9 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-9 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-9 .red { color:#FF4D5E; }.slide-9 .blue { color:#5AA9FF; }.slide-9 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-9 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-9 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-9 .mono { font-family:'JetBrains Mono', monospace; }.slide-9 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-9 .tbd { color:#FFB020; font-weight:700; }.slide-9 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-9 .notes { display:none; }
+  
+
+.slide-10 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-10 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-10 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-10 .red { color:#FF4D5E; }.slide-10 .blue { color:#5AA9FF; }.slide-10 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-10 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-10 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-10 .mono { font-family:'JetBrains Mono', monospace; }.slide-10 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-10 .tbd { color:#FFB020; font-weight:700; }.slide-10 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-10 .notes { display:none; }
+  
+
+.slide-11 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-11 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-11 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-11 .red { color:#FF4D5E; }.slide-11 .blue { color:#5AA9FF; }.slide-11 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-11 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-11 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-11 .mono { font-family:'JetBrains Mono', monospace; }.slide-11 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-11 .tbd { color:#FFB020; font-weight:700; }.slide-11 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-11 .notes { display:none; }
+  
+
+.slide-12 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-12 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-12 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-12 .red { color:#FF4D5E; }.slide-12 .blue { color:#5AA9FF; }.slide-12 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-12 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-12 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-12 .mono { font-family:'JetBrains Mono', monospace; }.slide-12 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-12 .tbd { color:#FFB020; font-weight:700; }.slide-12 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-12 .notes { display:none; }
+  
+
+.slide-13 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-13 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-13 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-13 .red { color:#FF4D5E; }.slide-13 .blue { color:#5AA9FF; }.slide-13 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-13 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-13 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-13 .mono { font-family:'JetBrains Mono', monospace; }.slide-13 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-13 .tbd { color:#FFB020; font-weight:700; }.slide-13 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-13 .notes { display:none; }
+  
+
+.slide-14 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-14 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-14 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-14 .red { color:#FF4D5E; }.slide-14 .blue { color:#5AA9FF; }.slide-14 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-14 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-14 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-14 .mono { font-family:'JetBrains Mono', monospace; }.slide-14 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-14 .tbd { color:#FFB020; font-weight:700; }.slide-14 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-14 .notes { display:none; }
+  
+
+.slide-15 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-15 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-15 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-15 .red { color:#FF4D5E; }.slide-15 .blue { color:#5AA9FF; }.slide-15 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-15 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-15 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-15 .mono { font-family:'JetBrains Mono', monospace; }.slide-15 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-15 .tbd { color:#FFB020; font-weight:700; }.slide-15 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-15 .notes { display:none; }
+  
+
+.slide-16 .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }.slide-16 .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }.slide-16 .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }.slide-16 .red { color:#FF4D5E; }.slide-16 .blue { color:#5AA9FF; }.slide-16 .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }.slide-16 .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }.slide-16 .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }.slide-16 .mono { font-family:'JetBrains Mono', monospace; }.slide-16 .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }.slide-16 .tbd { color:#FFB020; font-weight:700; }.slide-16 .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }.slide-16 .notes { display:none; }
+  
+
+</style>
+</head>
+<body>
+
+<div class="deck">
+  <nav class="rail" aria-label="Slides"></nav>
+  <div class="col">
+  <main class="stage">
+<section id="1" class="slide slide-1" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<div style="position:absolute; right:-120px; top:-120px; width:620px; height:620px; opacity:.5;">
+  <svg viewBox="0 0 600 600" width="620" height="620" fill="none" stroke="#FF4D5E" stroke-opacity=".35" stroke-width="1.2">
+    <circle cx="300" cy="300" r="60"/><circle cx="300" cy="300" r="120"/><circle cx="300" cy="300" r="190"/><circle cx="300" cy="300" r="270"/>
+    <path d="M300 0v600M0 300h600M88 88l424 424M512 88L88 512"/>
+  </svg>
+</div>
+<div style="display:flex; gap:56px; align-items:center; height:100%;">
+  <div style="flex:1; position:relative; z-index:1;">
+    <p class="eyebrow">Interface Hackathon · Oct 2026 · Jaidev</p>
+    <h1 class="h1" style="font-size:96px; letter-spacing:-.035em;">Spidey<br><span class="red">Sense</span></h1>
+    <p class="sub" style="font-size:26px; color:rgba(244,246,250,.8); max-width:520px;">Feel the things you haven't seen.</p>
+    <div style="display:flex; gap:10px; margin-top:28px; flex-wrap:wrap;">
+      <span class="chip">eye tracking</span><span class="chip">vision AI</span><span class="chip">haptics</span><span class="chip">radar</span>
+    </div>
+  </div>
+  <figure style="margin:0; width:500px; position:relative; z-index:1;">
+    <img src="img/neon-frame.jpg" style="width:500px; border-radius:16px; border:1px solid #2C3444; display:block; box-shadow:0 20px 50px rgba(0,0,0,.55);">
+    <figcaption class="mono" style="font-size:13px; color:rgba(244,246,250,.5); margin-top:10px;">Real Neon scene-camera frame · red circle = where the wearer is looking</figcaption>
+  </figure>
+</div>
+
+<aside class="notes">Spidey Sense is a wearable sixth sense. Eye-tracking glasses know where you're looking, an AI notices what you haven't, and a little haptic dot on your body tells you. This frame is from the real glasses: the red circle is my gaze, live.</aside>
+</section>
+
+<section id="2" class="slide slide-2" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:radial-gradient(120% 120% at 85% 10%, #E5243B 0%, #9E0F22 45%, #3A0710 100%); color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+<div style="position:absolute; inset:0; background-image:radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px); background-size:22px 22px; pointer-events:none;"></div>
+<div style="position:relative; display:flex; flex-direction:column; justify-content:center; height:100%;">
+  <p class="eyebrow" style="color:#FFD2D7;">The problem</p>
+  <h1 class="h1" style="font-size:60px; color:#fff;">We only notice<br>what we look at.</h1>
+  <p class="sub" style="color:rgba(255,255,255,.75);">The dangerous thing is usually the one outside your attention.</p>
+  <div style="display:flex; gap:22px; margin-top:40px;">
+    <div style="flex:1; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px;">
+  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9L12 17h3M14 5h3"/></svg>
+  <h3 style="font-family:'Space Grotesk',sans-serif; font-size:26px; margin:16px 0 6px; font-weight:600;">The blind spot</h3>
+  <p style="margin:0; font-size:17px; line-height:1.4; color:rgba(255,255,255,.75);">A bike closing in on your left while you watch the road ahead.</p></div>
+    <div style="flex:1; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px;">
+  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="2.5"/><path d="M9 9v6l-3 6M9 15l3 6M9 11l-4 2M9 11l4 2"/><path d="M17 10c2 1 3 3 3 5M15.5 12.5c1 .6 1.6 1.6 1.6 2.6"/></svg>
+  <h3 style="font-family:'Space Grotesk',sans-serif; font-size:26px; margin:16px 0 6px; font-weight:600;">Behind you</h3>
+  <p style="margin:0; font-size:17px; line-height:1.4; color:rgba(255,255,255,.75);">Someone walking up from behind, where no eye can see.</p></div>
+    <div style="flex:1; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px;">
+  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2"/><path d="M8 7v5l-2 4M8 12l2 4M8 9l-3 1M8 9l3 1"/><path d="M2 20c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/></svg>
+  <h3 style="font-family:'Space Grotesk',sans-serif; font-size:26px; margin:16px 0 6px; font-weight:600;">Near the water</h3>
+  <p style="margin:0; font-size:17px; line-height:1.4; color:rgba(255,255,255,.75);">A child drifting toward the pool edge while you look away.</p></div>
+  </div>
+</div>
+<aside class="notes">Attention is a spotlight: we only really notice what we look at. The things that hurt us are usually outside that spotlight, like a bike in the blind spot, someone coming up behind, or a kid edging toward the water.</aside>
+</section>
+
+<section id="3" class="slide slide-3" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">The idea</p>
+<h1 class="h1">A spidey sense you can wear.</h1>
+<p class="sub">Hands-free. No screen to check. You just feel it.</p>
+<div style="display:flex; gap:18px; margin-top:44px; align-items:stretch;">
+  <div class="card" style="flex:1; padding:28px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="mono" style="font-size:40px; font-weight:700; color:#242A37;">01</span></div>
+  <h3 style="font-size:28px; margin-top:18px;">Glasses watch your gaze</h3><p style="font-size:18px;">Eye-tracking glasses see the scene and exactly where you're looking.</p></div>
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; align-self:center;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  <div class="card" style="flex:1; padding:28px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 1 5 3 3 0 0 0 5 3V4z"/><path d="M12 4a3 3 0 0 1 3 3 3 3 0 0 1 3 3 3 3 0 0 1-1 5 3 3 0 0 1-5 3"/></svg><span class="mono" style="font-size:40px; font-weight:700; color:#242A37;">02</span></div>
+  <h3 style="font-size:28px; margin-top:18px;">AI spots the unnoticed</h3><p style="font-size:18px;">A vision model finds hazards, and checks whether you've looked at them.</p></div>
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; align-self:center;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  <div class="card" style="flex:1; padding:28px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg><span class="mono" style="font-size:40px; font-weight:700; color:#242A37;">03</span></div>
+  <h3 style="font-size:28px; margin-top:18px;">A dot on your skin</h3><p style="font-size:18px;">Vibration pattern + coloured light + warmth tell you what and how urgent.</p></div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 1 · PITCH</span></div>
+<aside class="notes">Three pieces. The glasses see what you see and where your eyes are. Claude looks at each frame and asks: is there something here you haven't noticed? If so, a small dot on your body buzzes, glows, or warms up, so you get the message without looking at a screen.</aside>
+</section>
+
+<section id="4" class="slide slide-4" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Why attention-aware</p>
+<h1 class="h1">Already looking at it? <span class="red">Stay quiet.</span></h1>
+<p class="sub">An alert for everything is an alert for nothing. Gaze lets us only speak up for what you missed.</p>
+<div style="margin-top:44px;">
+  <div style="display:flex; gap:18px;"><div style="width:220px;"></div><div style="flex:1; display:flex; gap:8px;"><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">bike</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">bike</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">car</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">car</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">dog</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">knife</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">knife</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">bike</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">bike</div><div style="flex:1; text-align:center; font-size:13px; color:rgba(244,246,250,.5);" class="mono">kid</div></div></div>
+  <div style="display:flex; gap:18px; margin-top:6px;"><div style="width:220px;"></div><div style="flex:1; display:flex; gap:8px;"><div style="flex:1; text-align:center; font-size:12px; color:#FF4D5E;" class="mono">UNSEEN</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#FF4D5E;" class="mono">UNSEEN</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#5AA9FF;" class="mono">seen</div><div style="flex:1; text-align:center; font-size:12px; color:#FF4D5E;" class="mono">UNSEEN</div></div></div>
+  <div style="display:flex; align-items:center; gap:18px; margin-top:16px;">
+  <div style="width:220px; font-size:18px; font-weight:600;">Plain hazard detector</div>
+  <div style="flex:1; display:flex; gap:8px;"><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div><div style="flex:1; height:44px; border-radius:8px; background:#5C6375; box-shadow:0 0 18px #5C6375;"></div></div></div>
+  <div style="display:flex; align-items:center; gap:18px; margin-top:16px;">
+  <div style="width:220px; font-size:18px; font-weight:600;">Spidey Sense</div>
+  <div style="flex:1; display:flex; gap:8px;"><div style="flex:1; height:44px; border-radius:8px; background:#FF4D5E; box-shadow:0 0 18px #FF4D5E;"></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#FF4D5E; box-shadow:0 0 18px #FF4D5E;"></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#1A1F2B; "></div><div style="flex:1; height:44px; border-radius:8px; background:#FF4D5E; box-shadow:0 0 18px #FF4D5E;"></div></div></div>
+</div>
+<p style="margin-top:28px; font-size:18px; color:rgba(244,246,250,.62);">Illustrative: 10 detections, 3 buzzes. The other 7 you'd already seen.</p>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 1 · PITCH</span></div>
+<aside class="notes">This is the key design decision. A normal detector would buzz at every bike, car and dog, and you'd tear it off in five minutes. Because we know where you're looking, we stay silent for anything you've already seen and only buzz for the things you missed.</aside>
+</section>
+
+<section id="5" class="slide slide-5" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Demo moments</p>
+<h1 class="h1" style="font-size:46px;">Five things to feel.</h1>
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:28px; flex:1; padding-bottom:44px;">
+  <div class="card" style="padding:20px 22px; display:flex; flex-direction:column;">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span style="width:40px; height:40px; border-radius:10px; background:#FF4D5E; color:#0B0D12; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px;">A</span>
+    <h3 style="margin:0; font-size:22px;">Look at a big cat</h3></div>
+  <p style="margin-top:12px; font-size:16px;">Gaze lands on the cat picture → buzz. A trigger that fires <i>because</i> you looked.</p>
+  <div style="margin-top:auto; padding-top:12px;"><span class="chip">gaze_mode: looking_at</span></div></div>
+  <div class="card" style="padding:20px 22px; display:flex; flex-direction:column;">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span style="width:40px; height:40px; border-radius:10px; background:#FF4D5E; color:#0B0D12; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px;">B</span>
+    <h3 style="margin:0; font-size:22px;">The lion you missed</h3></div>
+  <p style="margin-top:12px; font-size:16px;">A lion is in view but you haven't looked → buzz. Look at it → silence.</p>
+  <div style="margin-top:auto; padding-top:12px;"><span class="chip">gaze_mode: unseen</span></div></div>
+  <div class="card" style="padding:20px 22px; display:flex; flex-direction:column;">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span style="width:40px; height:40px; border-radius:10px; background:#FF4D5E; color:#0B0D12; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px;">C·D</span>
+    <h3 style="margin:0; font-size:22px;">Getting closer to water</h3></div>
+  <p style="margin-top:12px; font-size:16px;">Someone drifts toward the water over a few seconds. Buzz only if you're not watching.</p>
+  <div style="margin-top:auto; padding-top:12px;"><span class="chip">temporal trigger</span></div></div>
+  <div class="card" style="padding:20px 22px; display:flex; flex-direction:column;">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span style="width:40px; height:40px; border-radius:10px; background:#5AA9FF; color:#0B0D12; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px;">E</span>
+    <h3 style="margin:0; font-size:22px;">Someone behind you</h3></div>
+  <p style="margin-top:12px; font-size:16px;">Radar sees a person walk up from behind, where the glasses can't.</p>
+  <div style="margin-top:auto; padding-top:12px;"><span class="chip">source: radar</span></div></div>
+  <div class="card" style="grid-column:span 2; background:transparent; border-style:dashed; display:flex; flex-direction:column; justify-content:center;">
+    <p style="font-size:17px; color:rgba(244,246,250,.75); margin:0;">Every buzz shows up on the phone with <b style="color:#fff;">why it fired</b>, so the room can see what the Dot just told me.</p></div>
+</div>
+
+<aside class="notes">Here's what I'll show. A: look at the big cat and it buzzes. B: there's a lion in view I haven't looked at, it buzzes, and when I look at it, it goes quiet. C and D: someone gets closer to the water over time, and it only warns me if I'm not already watching. E: the radar catches someone walking up behind me.</aside>
+</section>
+
+<section id="6" class="slide slide-6" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Who it's for · where it goes</p>
+<h1 class="h1">Anyone whose eyes can't be everywhere.</h1>
+<div style="display:flex; gap:48px; margin-top:40px;">
+  <div style="flex:1.2; display:grid; grid-template-columns:1fr 1fr; gap:30px 28px;">
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9L12 17h3M14 5h3"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Cyclists</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">Blind-spot traffic, doors opening.</div></div></div>
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6C3.9 8.4 2 12 2 12s3.6 6 10 6c1.6 0 3-.4 4.3-1"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Low-vision users</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">A nudge toward what the eyes miss.</div></div></div>
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Workers near machinery</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">Forklifts and moving parts outside gaze.</div></div></div>
+    <div style="display:flex; gap:16px; align-items:flex-start;"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF4D5E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"/><path d="M12 8v6M12 14l-3 6M12 14l3 6M12 10l-4 2M12 10l4 2"/></svg>
+  <div><div style="font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:600;">Parents</div>
+  <div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:4px;">Kids near water, roads, stairs.</div></div></div>
+  </div>
+  <div class="card" style="flex:1; padding:28px;">
+    <div class="eyebrow" style="margin-bottom:18px;">Next</div>
+    <div style="display:flex; gap:14px; align-items:center; margin-bottom:22px;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5AA9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 0 0-7.1 7.1L12 21.5l8.8-8.8a5 5 0 0 0 0-7.1z"/><path d="M3 12h4l2-3 3 6 2-3h7"/></svg><div style="font-size:19px;"><b>Body senses</b><br><span style="color:rgba(244,246,250,.62); font-size:16px;">Oura heart rate as a trigger source</span></div></div>
+    <div style="display:flex; gap:14px; align-items:center; margin-bottom:22px;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5AA9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg><div style="font-size:19px;"><b>Phone-only version</b><br><span style="color:rgba(244,246,250,.62); font-size:16px;">App talks to the Dot over Bluetooth directly</span></div></div>
+    <div style="display:flex; gap:14px; align-items:center;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5AA9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/><circle cx="12" cy="12" r="1"/></svg><div style="font-size:19px;"><b>More senses</b><br><span style="color:rgba(244,246,250,.62); font-size:16px;">Any sensor can feed the same triggers</span></div></div>
+  </div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 1 · PITCH</span></div>
+<aside class="notes">Cyclists, people with low vision, workers around machinery, and parents all have the same problem: something important happens where they aren't looking. Next steps are body senses like heart rate from an Oura ring, and a phone-only version where the app drives the Dot directly.</aside>
+</section>
+
+<section id="7" class="slide slide-7" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Part 2 · How it works</p>
+<h1 class="h1">The kit.</h1>
+<p class="sub">Everything on the body is wireless. The MacBook is the brain.</p>
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:32px;">
+  <div class="card" style="padding:20px 22px;">
+  <div style="font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:600;">Pupil Labs Neon</div>
+  <div style="font-size:15px; color:rgba(244,246,250,.62); margin-top:4px; min-height:42px;">Eye-tracking glasses: scene camera + gaze.</div>
+  <div class="mono" style="font-size:13px; color:#FF4D5E; margin-top:10px;">USB-C → Companion phone</div></div>
+  <div class="card" style="padding:20px 22px;">
+  <div style="font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:600;">Companion phone</div>
+  <div style="font-size:15px; color:rgba(244,246,250,.62); margin-top:4px; min-height:42px;">In the pocket; streams video + gaze.</div>
+  <div class="mono" style="font-size:13px; color:#FF4D5E; margin-top:10px;">Wi-Fi hotspot → Mac · RT API :8080</div></div>
+  <div class="card" style="padding:20px 22px;">
+  <div style="font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:600;">DataFeel Dot + El Jefe</div>
+  <div style="font-size:15px; color:rgba(244,246,250,.62); margin-top:4px; min-height:42px;">Vibration, RGB light, thermal on the skin.</div>
+  <div class="mono" style="font-size:13px; color:#FF4D5E; margin-top:10px;">Bluetooth LE → Mac</div></div>
+  <div class="card" style="padding:20px 22px;">
+  <div style="font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:600;">Infineon radar</div>
+  <div style="font-size:15px; color:rgba(244,246,250,.62); margin-top:4px; min-height:42px;">BGT60TR13C, watches behind you.</div>
+  <div class="mono" style="font-size:13px; color:#5AA9FF; margin-top:10px;">radar server ws :8090</div></div>
+  <div class="card" style="padding:20px 22px;">
+  <div style="font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:600;">MacBook</div>
+  <div style="font-size:15px; color:rgba(244,246,250,.62); margin-top:4px; min-height:42px;">Runs the engine: source → detector → triggers → haptics.</div>
+  <div class="mono" style="font-size:13px; color:#5AA9FF; margin-top:10px;">Claude Haiku over the hotspot's data</div></div>
+  <div class="card" style="padding:20px 22px;">
+  <div style="font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:600;">iPhone app</div>
+  <div style="font-size:15px; color:rgba(244,246,250,.62); margin-top:4px; min-height:42px;">Live log, triggers, devices, haptics.</div>
+  <div class="mono" style="font-size:13px; color:#5AA9FF; margin-top:10px;">WebSocket :8765 · Bonjour</div></div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 2 · HOW IT WORKS</span></div>
+<aside class="notes">Here's the hardware. The Neon glasses plug into their Companion phone, which streams over its own hotspot to the MacBook, so we don't depend on venue Wi-Fi. The Dot and its El Jefe controller talk Bluetooth, the radar runs its own little server, and an iPhone app shows everything live.</aside>
+</section>
+
+<section id="8" class="slide slide-8" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:44px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Architecture</p>
+<h1 class="h1" style="font-size:42px;">Source → detector → triggers → haptics.</h1>
+<svg viewBox="0 0 1120 470" width="1120" height="470" style="display:block; margin-top:18px;">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#FF4D5E"/></marker>
+<marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5AA9FF"/></marker>
+</defs>
+<text x="110" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="12" letter-spacing="2" fill="#5C6375">WORN / AROUND YOU</text>
+<text x="560" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="12" letter-spacing="2" fill="#5C6375">MACBOOK (THE BRAIN)</text>
+<text x="1010" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="12" letter-spacing="2" fill="#5C6375">FEEDBACK</text>
+<rect x="330" y="30" width="460" height="430" rx="18" fill="none" stroke="#242A37" stroke-dasharray="6 6"/>
+<rect x="10" y="40" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="110.0" y="68.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Neon glasses</text><text x="110.0" y="90.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">scene cam + gaze 130 Hz</text>
+<rect x="10" y="150" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="110.0" y="178.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Companion phone</text><text x="110.0" y="200.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">Real-time API :8080</text>
+<rect x="10" y="330" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="110.0" y="358.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Infineon radar</text><text x="110.0" y="380.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">radar server ws :8090</text>
+<line x1="110" y1="104" x2="110" y2="148" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/><text x="140" y="131" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#FF4D5E">USB-C</text>
+<rect x="380" y="50" width="360" height="62" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="560.0" y="77.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Source</text><text x="560.0" y="99.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">Frame(image, gaze) · capture-time stamped</text>
+<rect x="380" y="150" width="360" height="72" rx="12" fill="#151923" stroke="#FF4D5E" stroke-width="1.5"/><text x="560.0" y="182.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Detector · Claude Haiku</text><text x="560.0" y="204.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">1 call/tick · hazards + all triggers</text>
+<rect x="380" y="262" width="360" height="62" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="560.0" y="289.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Triggers</text><text x="560.0" y="311.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">gaze history · trend memory · cooldowns</text>
+<rect x="380" y="364" width="360" height="62" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="560.0" y="391.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">Haptic sink</text><text x="560.0" y="413.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">fastfire · intensity · safety caps</text>
+<line x1="210" y1="182" x2="378" y2="90" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/><text x="290" y="122" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#FF4D5E">Wi-Fi hotspot</text>
+<line x1="210" y1="362" x2="378" y2="293" stroke="#5AA9FF" stroke-width="2" marker-end="url(#ahb)"/><text x="290" y="312" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#5AA9FF">radar targets</text>
+<line x1="560" y1="112" x2="560" y2="148" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="560" y1="222" x2="560" y2="260" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="560" y1="324" x2="560" y2="362" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="910" y="330" width="200" height="64" rx="12" fill="#151923" stroke="#FF4D5E" stroke-width="1.5"/><text x="1010.0" y="358.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">El Jefe → Dot</text><text x="1010.0" y="380.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">buzz · light · warmth</text>
+<rect x="910" y="150" width="200" height="64" rx="12" fill="#151923" stroke="#2C3444" stroke-width="1.5"/><text x="1010.0" y="178.0" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="600" fill="#F4F6FA">iPhone app</text><text x="1010.0" y="200.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#8C95A8">log · senses · haptics</text>
+<line x1="740" y1="395" x2="908" y2="365" stroke="#FF4D5E" stroke-width="2" marker-end="url(#ah)"/><text x="826" y="370" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#FF4D5E">Bluetooth LE</text>
+<line x1="740" y1="290" x2="908" y2="196" stroke="#5AA9FF" stroke-width="2" marker-end="url(#ahb)"/><text x="835" y="228" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#5AA9FF">WebSocket :8765</text>
+<line x1="908" y1="172" x2="742" y2="172" stroke="#5AA9FF" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#ahb)"/><text x="826" y="164" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" fill="#5AA9FF">edit triggers</text>
+</svg>
+
+<aside class="notes">The engine is a simple loop: a source gives frames with gaze, the detector asks Haiku about them, the triggers decide whether to fire, and the sink plays a pattern on the Dot over Bluetooth. Every stage is swappable in config, fake or real, which is how we built and tested it all in parallel. Every event also goes out over a WebSocket to the phone.</aside>
+</section>
+
+<section id="9" class="slide slide-9" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">The detector</p>
+<h1 class="h1" style="font-size:46px;">One Haiku call per tick. Everything in it.</h1>
+<div style="display:flex; gap:40px; margin-top:34px;">
+  <div style="flex:1;">
+    <div class="card" style="font-size:17px; line-height:1.55;">
+      <div class="mono" style="font-size:13px; color:#8C95A8; margin-bottom:8px;">IN</div>
+      newest frame, 384 px, gaze drawn in<br>+ 3 labelled frames for temporal triggers<br>+ built-in hazards <b>and every plain-English trigger</b>
+      <div class="mono" style="font-size:13px; color:#8C95A8; margin:16px 0 8px;">OUT (streamed, strict JSON)</div>
+      <span class="red mono" style="font-size:15px;">hazard · urgency · x · seen_by_user</span> → act now<br>
+      <span class="mono" style="font-size:15px; color:#C9D1E0;">triggers · bbox · why</span> → follows
+    </div>
+  </div>
+  <div style="flex:1.05;"><svg viewBox="0 0 560 230" width="560" height="230">
+<text x="0" y="14" font-family="JetBrains Mono" font-size="12" fill="#8C95A8">calls launched every 0.4 s on the newest frame · ≤ 2 in flight</text>
+
+<rect x="0" y="34" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="224" y="34" width="64" height="30" rx="6" fill="#7A2430"/>
+<text x="8" y="54" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 1 · early fields</text>
+
+<rect x="100" y="74" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="324" y="74" width="64" height="30" rx="6" fill="#7A2430"/>
+<text x="108" y="94" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 2</text>
+
+<rect x="200" y="114" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="424" y="114" width="64" height="30" rx="6" fill="#7A2430"/>
+<text x="208" y="134" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 3</text>
+
+<rect x="300" y="154" width="224" height="30" rx="6" fill="#FF4D5E"/>
+<rect x="524" y="154" width="36" height="30" rx="6" fill="#7A2430"/>
+<text x="308" y="174" font-family="JetBrains Mono" font-size="12" fill="#0B0D12" font-weight="700">call 4</text>
+<line x1="0" y1="205" x2="560" y2="205" stroke="#2C3444"/>
+<text x="0" y="224" font-family="JetBrains Mono" font-size="11" fill="#5C6375">0 s</text>
+<text x="220" y="224" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#FF4D5E">~0.9 s early</text>
+<text x="292" y="224" font-family="JetBrains Mono" font-size="11" fill="#C9D1E0">~1.15 s full</text>
+</svg>
+    <p style="font-size:17px; color:rgba(244,246,250,.62); margin:14px 0 0;">Frame → cue <b style="color:#fff;">0.92 s median</b>, 1.20 s p90 (was 1.28 s). ~3 results/s, 125/125 correct on test scenes.</p>
+  </div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 2 · HOW IT WORKS</span></div>
+<aside class="notes">There's only one model path. Each tick we send Haiku the newest frame plus every trigger the user wrote in plain English, all in one call. The answer streams, and the urgent fields come first, so built-in hazards fire before the rest of the JSON arrives. Two calls overlap, which got us from 1.28 to 0.92 seconds median.</aside>
+</section>
+
+<section id="10" class="slide slide-10" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Attention model</p>
+<h1 class="h1" style="font-size:46px;">"Seen" comes from your real gaze.</h1>
+<div style="display:flex; gap:44px; margin-top:30px; align-items:flex-start;">
+  <svg viewBox="0 0 520 390" width="520" height="390">
+<rect x="0" y="0" width="520" height="390" rx="14" fill="#151923" stroke="#2C3444"/>
+<rect x="300" y="110" width="150" height="170" rx="6" fill="rgba(255,77,94,.08)" stroke="#FF4D5E" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="450" y="100" text-anchor="end" font-family="JetBrains Mono" font-size="13" fill="#FF4D5E">bbox (from Haiku) + 4% margin</text>
+<polyline points="70,320 110,290 150,260 200,230 250,215 300,200 345,190 372,195" fill="none" stroke="#5AA9FF" stroke-width="2" stroke-opacity=".6"/>
+<circle cx="70" cy="320" r="5" fill="#5AA9FF" fill-opacity=".25"/><circle cx="110" cy="290" r="5" fill="#5AA9FF" fill-opacity=".3"/>
+<circle cx="150" cy="260" r="5" fill="#5AA9FF" fill-opacity=".4"/><circle cx="200" cy="230" r="5" fill="#5AA9FF" fill-opacity=".5"/>
+<circle cx="250" cy="215" r="5" fill="#5AA9FF" fill-opacity=".65"/><circle cx="300" cy="200" r="6" fill="#5AA9FF" fill-opacity=".8"/>
+<circle cx="345" cy="190" r="6" fill="#5AA9FF"/><circle cx="372" cy="195" r="14" fill="none" stroke="#5AA9FF" stroke-width="3"/>
+<text x="40" y="350" font-family="JetBrains Mono" font-size="13" fill="#5AA9FF">gaze history (last ~5 s, 130 Hz)</text>
+<text x="24" y="34" font-family="JetBrains Mono" font-size="13" fill="#8C95A8">newest frame</text>
+</svg>
+  <div style="flex:1; padding-top:6px;">
+    <p style="font-size:18px; color:rgba(244,246,250,.75); margin:0 0 24px;">Engine checks when the gaze point last fell inside the object's box → <span class="mono">looked_at_s_ago</span>.</p>
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:20px;">
+  <span class="mono" style="min-width:122px; text-align:center; font-size:14px; font-weight:700; padding:6px 0; border-radius:8px; background:#5AA9FF; color:#0B0D12;">looking_at</span>
+  <div><div class="mono" style="font-size:14px; color:#C9D1E0;">looked ≤ 0.6 s ago</div><div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:2px;">You're on it right now.</div></div></div>
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:20px;">
+  <span class="mono" style="min-width:122px; text-align:center; font-size:14px; font-weight:700; padding:6px 0; border-radius:8px; background:#C9D1E0; color:#0B0D12;">noticed</span>
+  <div><div class="mono" style="font-size:14px; color:#C9D1E0;">within notice_memory_s (3 s)</div><div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:2px;">Looked recently. Stay quiet.</div></div></div>
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:20px;">
+  <span class="mono" style="min-width:122px; text-align:center; font-size:14px; font-weight:700; padding:6px 0; border-radius:8px; background:#FF4D5E; color:#0B0D12;">unseen</span>
+  <div><div class="mono" style="font-size:14px; color:#C9D1E0;">not looked at</div><div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:2px;">Eligible to buzz.</div></div></div>
+  </div>
+</div>
+
+<aside class="notes">We don't trust the model to guess whether you saw something. Haiku returns a bounding box, and the engine keeps about five seconds of real gaze samples from the glasses. If your gaze was inside that box recently, you've noticed it and we stay quiet; if not, it's unseen and can buzz.</aside>
+</section>
+
+<section id="11" class="slide slide-11" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Temporal layer</p>
+<h1 class="h1" style="font-size:44px;">Change over time, not one snapshot.</h1>
+<div style="display:flex; gap:30px; margin-top:24px; align-items:flex-start;">
+  <div><svg viewBox="0 0 760 200" width="760" height="200">
+<g transform="translate(0,0)">
+<rect x="0" y="20" width="230" height="170" rx="10" fill="#151923" stroke="#2C3444"/>
+<rect x="0" y="140" width="230" height="50" fill="#1D4E89" opacity=".85"/><rect x="0" y="137" width="230" height="5" fill="#5AA9FF"/>
+<g transform="translate(115,34)" stroke="#F4F6FA" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6">
+<circle cx="0" cy="0" r="8"/><path d="M0 8v26M0 34l-9 20M0 34l9 20M0 16l-12 8M0 16l12 8"/></g>
+<text x="115" y="12" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#8C95A8">t-1.4s</text>
+</g><g transform="translate(265,0)">
+<rect x="0" y="20" width="230" height="170" rx="10" fill="#151923" stroke="#2C3444"/>
+<rect x="0" y="140" width="230" height="50" fill="#1D4E89" opacity=".85"/><rect x="0" y="137" width="230" height="5" fill="#5AA9FF"/>
+<g transform="translate(115,58)" stroke="#F4F6FA" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8">
+<circle cx="0" cy="0" r="8"/><path d="M0 8v26M0 34l-9 20M0 34l9 20M0 16l-12 8M0 16l12 8"/></g>
+<text x="115" y="12" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#8C95A8">t-0.7s</text>
+</g><g transform="translate(530,0)">
+<rect x="0" y="20" width="230" height="170" rx="10" fill="#151923" stroke="#2C3444"/>
+<rect x="0" y="140" width="230" height="50" fill="#1D4E89" opacity=".85"/><rect x="0" y="137" width="230" height="5" fill="#5AA9FF"/>
+<g transform="translate(115,80)" stroke="#F4F6FA" stroke-width="3" stroke-linecap="round" fill="none" opacity="1">
+<circle cx="0" cy="0" r="8"/><path d="M0 8v26M0 34l-9 20M0 34l9 20M0 16l-12 8M0 16l12 8"/></g>
+<text x="115" y="12" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#FF4D5E">now</text>
+</g>
+</svg><p style="font-size:16px; color:rgba(244,246,250,.62); margin:8px 0 0; max-width:740px;">3 labelled frames in the same Haiku call. Code keeps the trend; only <b style="color:#fff;">relative</b> signals, no metres from a camera.</p></div>
+  <div style="flex:1; display:grid; gap:10px;">
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">gap</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">subject ↔ target, in body-heights</div></div>
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">loom</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">box area vs last tick (&gt;1 = coming at you)</div></div>
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">ordinal</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">closer / same / farther</div></div>
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">touching</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">yes / no</div></div>
+  </div>
+</div>
+<p style="font-size:17px; margin:18px 0 0; color:rgba(244,246,250,.8);">Fires on a consistent trend for ≥ 3 ticks (or touching) · hysteresis + cooldown so it doesn't chatter.</p>
+
+<aside class="notes">Some hazards are about change, like a person getting closer to the water. For those triggers Haiku sees three frames labelled with their times, and returns boxes plus closer-or-farther. The code remembers the trend using only relative measures, like the gap in body-heights, and fires once it's consistent for three ticks.</aside>
+</section>
+
+<section id="12" class="slide slide-12" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Haptic vocabulary</p>
+<h1 class="h1" style="font-size:46px;">How urgent, felt without looking.</h1>
+<div style="display:flex; gap:16px; margin-top:28px;">
+  <div class="card" style="flex:1; padding:22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><span class="mono" style="font-size:20px; font-weight:700; color:#FF4D5E;">urgent</span>
+  <span style="width:22px; height:22px; border-radius:50%; background:#FF3B4E; box-shadow:0 0 16px #FF3B4E;"></span></div>
+  <div style="margin-top:12px;"><svg viewBox="0 0 220 60" width="220" height="60"><path d="M0 30h20l4-24 4 48 4-24h10l4-24 4 48 4-24h10l4-24 4 48 4-24h12 l2-26 2 52 2-52 2 52 2-52 2 52 2-52 2 52 2-52 2 52 2-26h40" fill="none" stroke="#FF4D5E" stroke-width="2.5" stroke-linejoin="round"/></svg></div><p style="margin-top:8px;">Triple click + strong buzz. Red.</p></div>
+  <div class="card" style="flex:1; padding:22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><span class="mono" style="font-size:20px; font-weight:700; color:#FF7EB6;">pulse</span>
+  <span style="width:22px; height:22px; border-radius:50%; background:#FF5FA8; box-shadow:0 0 16px #FF5FA8;"></span></div>
+  <div style="margin-top:12px;"><svg viewBox="0 0 220 60" width="220" height="60"><path d="M0 30h30l5-18 5 36 5-18h8l5-18 5 36 5-18h50l5-18 5 36 5-18h8l5-18 5 36 5-18h44" fill="none" stroke="#FF7EB6" stroke-width="2.5" stroke-linejoin="round"/></svg></div><p style="margin-top:8px;">Heartbeat double clicks. Pink.</p></div>
+  <div class="card" style="flex:1; padding:22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;"><span class="mono" style="font-size:20px; font-weight:700; color:#5AA9FF;">ambient</span>
+  <span style="width:22px; height:22px; border-radius:50%; background:#3D8BFF; box-shadow:0 0 16px #3D8BFF;"></span></div>
+  <div style="margin-top:12px;"><svg viewBox="0 0 220 60" width="220" height="60"><path d="M0 30 C20 18 40 18 60 30 S100 42 120 30 S160 18 180 30 S210 40 220 30" fill="none" stroke="#5AA9FF" stroke-width="2.5" stroke-linejoin="round"/></svg></div><p style="margin-top:8px;">Soft hum. Blue.</p></div>
+</div>
+<div style="display:flex; gap:16px; margin-top:16px;">
+  <div class="card" style="flex:1.3;"><div class="mono" style="font-size:13px; color:#8C95A8;">INTENSITY = SWAP TO A WEAKER WAVEFORM</div>
+    <div class="mono" style="font-size:16px; margin-top:10px;">BUZZ1_P100 → BUZZ3_P60 → BUZZ5_P20 · 0 = light only</div></div>
+  <div class="card" style="flex:1;"><div class="mono" style="font-size:13px; color:#8C95A8;">THERMAL SAFETY</div>
+    <div style="font-size:16px; margin-top:10px;">Cap 40 °C · off &gt; 41 °C skin · auto-off 30 s</div></div>
+</div>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 2 · HOW IT WORKS</span></div>
+<aside class="notes">The Dot has three channels: vibration, light and heat. We built a small vocabulary: urgent is a sharp triple click and strong buzz in red, pulse is a heartbeat in pink, ambient is a soft blue hum. Intensity works by swapping to weaker waveforms, and warmth is hard-capped at 40 degrees with automatic shut-offs.</aside>
+</section>
+
+<section id="13" class="slide slide-13" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:radial-gradient(120% 120% at 15% 10%, #1F5FD6 0%, #102F73 50%, #070F26 100%); color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+<div style="position:absolute; inset:0; background-image:radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px); background-size:22px 22px; pointer-events:none;"></div>
+<div style="position:relative;">
+<p class="eyebrow" style="color:#A9CCFF;">Reverse-engineering win</p>
+<h1 class="h1" style="font-size:48px; color:#fff;">Cutting the cable: 361 → 117 ms.</h1>
+<div style="display:flex; gap:48px; margin-top:34px;">
+  <div style="flex:1; font-size:18px; line-height:1.5; color:rgba(255,255,255,.85);">
+    <div style="margin-bottom:16px;"><b style="color:#fff;">1.</b> DataFeel only shipped USB for Python.</div>
+    <div style="margin-bottom:16px;"><b style="color:#fff;">2.</b> Inside their NuGet DLL: the <span class="mono">Nordic UART</span> service UUIDs, carrying the same <span class="mono">Modbus RTU</span> frames.</div>
+    <div style="margin-bottom:16px;"><b style="color:#fff;">3.</b> A fake serial port over Bluetooth → stock SDK works unchanged.</div>
+    <div><b style="color:#fff;">4.</b> Fastfire: 6 writes → 2 before the buzz starts.</div>
+  </div>
+  <div style="flex:1; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:26px 28px;">
+    <div class="mono" style="font-size:13px; color:rgba(255,255,255,.6); margin-bottom:18px;">TRIGGER → BUZZ, MEDIAN</div>
+    <div style="margin-bottom:22px;"><div style="display:flex; justify-content:space-between; font-size:17px; margin-bottom:8px;"><span>Bluetooth, stock SDK</span><span class="mono" style="font-weight:700;">361 ms</span></div>
+<div style="height:34px; border-radius:8px; background:rgba(255,255,255,.08);"><div style="height:34px; width:90.2%; border-radius:8px; background:#7C8BA6;"></div></div>
+<div class="mono" style="font-size:13px; color:rgba(255,255,255,.6); margin-top:6px;">6 sequential writes × ~60 ms</div></div>
+    <div style="margin-bottom:22px;"><div style="display:flex; justify-content:space-between; font-size:17px; margin-bottom:8px;"><span>Bluetooth, fastfire</span><span class="mono" style="font-weight:700;">117 ms</span></div>
+<div style="height:34px; border-radius:8px; background:rgba(255,255,255,.08);"><div style="height:34px; width:29.2%; border-radius:8px; background:#FF4D5E;"></div></div>
+<div class="mono" style="font-size:13px; color:rgba(255,255,255,.6); margin-top:6px;">2 writes · worst 150 ms</div></div>
+    <div style="margin-bottom:22px;"><div style="display:flex; justify-content:space-between; font-size:17px; margin-bottom:8px;"><span>USB cable (reference)</span><span class="mono" style="font-weight:700;">48 ms</span></div>
+<div style="height:34px; border-radius:8px; background:rgba(255,255,255,.08);"><div style="height:34px; width:12.0%; border-radius:8px; background:#5AA9FF;"></div></div>
+<div class="mono" style="font-size:13px; color:rgba(255,255,255,.6); margin-top:6px;"></div></div>
+  </div>
+</div></div>
+<aside class="notes">The Dot only had a USB Python SDK, and a cable to your laptop isn't a wearable. I found the Bluetooth protocol inside DataFeel's C# NuGet package: Nordic UART carrying the same Modbus frames. A fake serial port made their SDK work unchanged, and cutting a trigger from six writes to two took it from 361 to 117 milliseconds.</aside>
+</section>
+
+<section id="14" class="slide slide-14" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:48px 70px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">The iPhone app</p>
+<h1 class="h1" style="font-size:44px;">See why it buzzed. Teach it new senses.</h1>
+<div style="display:flex; gap:30px; margin-top:26px; justify-content:space-between;">
+  <figure style="margin:0; text-align:center;"><img class="phone" src="img/app-log-why.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Log</b> · why it buzzed</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="img/app-senses-triggers.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Senses</b> · triggers</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="img/app-add-trigger.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Plain-English</b> trigger</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="img/app-haptics.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Haptics</b> · link check</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="img/app-settings-bonjour.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Zero-config</b> · Bonjour</figcaption></figure>
+</div>
+
+<aside class="notes">The app is the window into the system. The Log shows every buzz with Haiku's reason, Senses is where you write new triggers in plain English like 'someone holding a knife and I haven't looked at it', and Haptics checks each hop of the link with live milliseconds. It finds the Mac by itself over Bonjour, no setup.</aside>
+</section>
+
+<section id="15" class="slide slide-15" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:48px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Measured</p>
+<h1 class="h1" style="font-size:44px;">The numbers.</h1>
+<table style="border-collapse:collapse; margin-top:20px; width:100%;">
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Dot trigger over Bluetooth (fastfire)</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#FF4D5E; white-space:nowrap;">117 ms</td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">median, 150 ms worst · stock SDK 361 ms · USB 48 ms</td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">App → Mac → Dot link ping</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#F4F6FA; white-space:nowrap;">~60 ms</td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">El Jefe health read ~60 ms</td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Haiku frame → cue (test scenes)</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#FF4D5E; white-space:nowrap;">0.92 s</td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">median · 1.20 s p90 · ~3 results/s</td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Neon over phone hotspot</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#F4F6FA; white-space:nowrap;">130 Hz gaze</td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">scene+gaze 1600×1200 @ 9–18 fps matched</td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Glasses capture → Mac</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#F4F6FA; white-space:nowrap;">110–150 ms</td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">median (hotspot spikes to ~1 s p90)</td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Glasses capture → cue, end to end</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#F4F6FA; white-space:nowrap;">1.6 s</td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">median, 1.9 s p90 · before the Haiku speed-ups; re-measure: <span class="tbd">TBD</span></td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Radar: person behind → buzz</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#F4F6FA; white-space:nowrap;"><span class="tbd">TBD</span></td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">not yet measured</td></tr>
+<tr><td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px;">Temporal trigger: approach → buzz</td>
+<td class="mono" style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:16px; font-weight:700; color:#F4F6FA; white-space:nowrap;"><span class="tbd">TBD</span></td>
+<td style="padding:10px 14px; border-bottom:1px solid #1E2431; font-size:13px; color:#8C95A8;">not yet measured</td></tr>
+</table>
+<div style="position:absolute; left:80px; right:80px; bottom:26px; display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:.12em; color:rgba(244,246,250,.32);"><span>SPIDEY SENSE</span><span>PART 2 · HOW IT WORKS</span></div>
+<aside class="notes">These are all measured, not estimated. The haptic link is about a tenth of a second, and the AI loop is under a second on test scenes. End to end from the glasses it was 1.6 seconds before the Haiku speed-ups; I'll re-measure that and the radar path after the final tests.</aside>
+</section>
+
+<section id="16" class="slide slide-16" style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<div style="position:absolute; left:-140px; bottom:-160px; width:560px; height:560px; opacity:.4;">
+  <svg viewBox="0 0 600 600" width="560" height="560" fill="none" stroke="#FF4D5E" stroke-opacity=".35" stroke-width="1.2">
+    <circle cx="300" cy="300" r="60"/><circle cx="300" cy="300" r="120"/><circle cx="300" cy="300" r="190"/><circle cx="300" cy="300" r="270"/>
+    <path d="M300 0v600M0 300h600M88 88l424 424M512 88L88 512"/></svg></div>
+<div style="position:relative; display:flex; gap:60px; height:100%; align-items:center;">
+  <div style="flex:1;">
+    <p class="eyebrow">What's next</p>
+    <div style="font-size:21px; line-height:1.9; color:rgba(244,246,250,.85);">
+      <div>→ Phone-only: the app drives the Dot</div>
+      <div>→ Oura heart rate as a body sense</div>
+      <div>→ Left / right Dots for direction</div>
+      <div>→ Field test with cyclists and low-vision users</div>
+    </div>
+  </div>
+  <div style="flex:1; text-align:right;">
+    <h1 class="h1" style="font-size:84px; letter-spacing:-.03em;">Thank<br><span class="red">you.</span></h1>
+    <p class="sub" style="margin-left:auto; max-width:420px;">Spidey Sense · Jaidev<br>Pupil Labs Neon · DataFeel<br>Infineon · Claude Haiku</p>
+  </div>
+</div>
+<aside class="notes">Where it goes next: drop the laptop and let the phone drive the Dot directly, add body senses like heart rate, and use two Dots so the buzz tells you which side. Then real testing with cyclists and low-vision users. Thank you.</aside>
+</section>
+    <button class="arrow-btn prev" aria-label="Previous slide">&#8249;</button>
+    <button class="arrow-btn next" aria-label="Next slide">&#8250;</button>
+    <div class="counter"></div>
+    <div class="hint">← → navigate · n notes</div>
+  </main>
+  <div class="notes-panel" aria-live="polite"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var stage = document.querySelector('.stage');
+  var rail = document.querySelector('.rail');
+  var counter = document.querySelector('.counter');
+  var prevBtn = document.querySelector('.prev');
+  var nextBtn = document.querySelector('.next');
+  var slides = Array.prototype.slice.call(stage.querySelectorAll('.slide'));
+  var css = getComputedStyle(document.documentElement);
+  var W = parseInt(css.getPropertyValue('--slide-w'), 10) || 1280;
+  var H = parseInt(css.getPropertyValue('--slide-h'), 10) || 720;
+  var thumbW = parseInt(css.getPropertyValue('--thumb-w'), 10) || 152;
+  var ts = thumbW / W;
+  var current = 0;
+
+  slides.forEach(function (sl, i) {
+    var btn = document.createElement('button');
+    btn.className = 'thumb';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+
+    var box = document.createElement('div');
+    box.className = 'thumb-inner';
+    box.style.width = Math.round(W * ts) + 'px';
+    box.style.height = Math.round(H * ts) + 'px';
+
+    // Live clones stay in sync with the slide for free — no separate render.
+    var clone = sl.cloneNode(true);
+    clone.removeAttribute('id');          // ids must stay unique to the stage
+    clone.classList.remove('active');
+    clone.style.visibility = 'visible';
+    clone.style.opacity = '1';
+    clone.style.transform = 'scale(' + ts + ')';
+    clone.setAttribute('aria-hidden', 'true');
+    box.appendChild(clone);
+
+    var num = document.createElement('span');
+    num.className = 'thumb-num';
+    num.textContent = String(i + 1);
+
+    btn.appendChild(box);
+    btn.appendChild(num);
+    btn.addEventListener('click', function () { show(i); });
+    rail.appendChild(btn);
+  });
+  var thumbs = Array.prototype.slice.call(rail.querySelectorAll('.thumb'));
+
+  function fit() {
+    var s = Math.min(stage.clientWidth / W, stage.clientHeight / H);
+    // Offset in px from a top-left origin. A percentage translate resolves
+    // against the slide's own box, so translate(-50%,-50%) + scale() does not
+    // centre once scaled — it leaves the slide pinned to one edge.
+    var x = (stage.clientWidth - W * s) / 2;
+    var y = (stage.clientHeight - H * s) / 2;
+    slides.forEach(function (sl) {
+      sl.style.transform = 'translate(' + x + 'px, ' + y + 'px) scale(' + s + ')';
+    });
+  }
+
+  function show(i, skipHash) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (sl, j) { sl.classList.toggle('active', j === current); });
+    thumbs.forEach(function (t, j) { t.classList.toggle('on', j === current); });
+    counter.textContent = (current + 1) + ' / ' + slides.length;
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === slides.length - 1;
+    if (!skipHash) history.replaceState(null, '', '#' + (current + 1));
+    var t = thumbs[current];
+    if (t) {
+      var tb = t.getBoundingClientRect(), rb = rail.getBoundingClientRect();
+      if (tb.top < rb.top || tb.bottom > rb.bottom) t.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  prevBtn.addEventListener('click', function () { show(current - 1); });
+  nextBtn.addEventListener('click', function () { show(current + 1); });
+
+  addEventListener('keydown', function (e) {
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].indexOf(e.key) > -1) { e.preventDefault(); show(current + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp'].indexOf(e.key) > -1) { e.preventDefault(); show(current - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); show(0); }
+    else if (e.key === 'End') { e.preventDefault(); show(slides.length - 1); }
+  });
+
+  addEventListener('resize', fit);
+  addEventListener('hashchange', function () {
+    var n = parseInt(location.hash.slice(1), 10);
+    if (n >= 1 && n <= slides.length) show(n - 1, true);
+  });
+
+  var start = parseInt(location.hash.slice(1), 10);
+  fit();
+  show(start >= 1 && start <= slides.length ? start - 1 : 0, true);
+})();
+</script>
+
+
+<script>
+(function () {
+  var panel = document.querySelector('.notes-panel');
+  function update() {
+    var a = document.querySelector('.stage > .slide.active');
+    var n = a && a.querySelector('.notes');
+    panel.innerHTML = '<div class="lbl">SPEAKER NOTES \u00b7 SLIDE ' + (a ? a.id : '') + '</div>' + (n ? n.innerHTML : '');
+  }
+  new MutationObserver(update).observe(document.querySelector('.stage'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+  addEventListener('keydown', function (e) {
+    if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey) {
+      document.body.classList.toggle('show-notes');
+      update();
+      dispatchEvent(new Event('resize'));
+    }
+  });
+  update();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Attention model</p>
+<h1 class="h1" style="font-size:46px;">"Seen" comes from your real gaze.</h1>
+<div style="display:flex; gap:44px; margin-top:30px; align-items:flex-start;">
+  <svg viewBox="0 0 520 390" width="520" height="390">
+<rect x="0" y="0" width="520" height="390" rx="14" fill="#151923" stroke="#2C3444"/>
+<rect x="300" y="110" width="150" height="170" rx="6" fill="rgba(255,77,94,.08)" stroke="#FF4D5E" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="450" y="100" text-anchor="end" font-family="JetBrains Mono" font-size="13" fill="#FF4D5E">bbox (from Haiku) + 4% margin</text>
+<polyline points="70,320 110,290 150,260 200,230 250,215 300,200 345,190 372,195" fill="none" stroke="#5AA9FF" stroke-width="2" stroke-opacity=".6"/>
+<circle cx="70" cy="320" r="5" fill="#5AA9FF" fill-opacity=".25"/><circle cx="110" cy="290" r="5" fill="#5AA9FF" fill-opacity=".3"/>
+<circle cx="150" cy="260" r="5" fill="#5AA9FF" fill-opacity=".4"/><circle cx="200" cy="230" r="5" fill="#5AA9FF" fill-opacity=".5"/>
+<circle cx="250" cy="215" r="5" fill="#5AA9FF" fill-opacity=".65"/><circle cx="300" cy="200" r="6" fill="#5AA9FF" fill-opacity=".8"/>
+<circle cx="345" cy="190" r="6" fill="#5AA9FF"/><circle cx="372" cy="195" r="14" fill="none" stroke="#5AA9FF" stroke-width="3"/>
+<text x="40" y="350" font-family="JetBrains Mono" font-size="13" fill="#5AA9FF">gaze history (last ~5 s, 130 Hz)</text>
+<text x="24" y="34" font-family="JetBrains Mono" font-size="13" fill="#8C95A8">newest frame</text>
+</svg>
+  <div style="flex:1; padding-top:6px;">
+    <p style="font-size:18px; color:rgba(244,246,250,.75); margin:0 0 24px;">Engine checks when the gaze point last fell inside the object's box → <span class="mono">looked_at_s_ago</span>.</p>
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:20px;">
+  <span class="mono" style="min-width:122px; text-align:center; font-size:14px; font-weight:700; padding:6px 0; border-radius:8px; background:#5AA9FF; color:#0B0D12;">looking_at</span>
+  <div><div class="mono" style="font-size:14px; color:#C9D1E0;">looked ≤ 0.6 s ago</div><div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:2px;">You're on it right now.</div></div></div>
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:20px;">
+  <span class="mono" style="min-width:122px; text-align:center; font-size:14px; font-weight:700; padding:6px 0; border-radius:8px; background:#C9D1E0; color:#0B0D12;">noticed</span>
+  <div><div class="mono" style="font-size:14px; color:#C9D1E0;">within notice_memory_s (3 s)</div><div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:2px;">Looked recently. Stay quiet.</div></div></div>
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:20px;">
+  <span class="mono" style="min-width:122px; text-align:center; font-size:14px; font-weight:700; padding:6px 0; border-radius:8px; background:#FF4D5E; color:#0B0D12;">unseen</span>
+  <div><div class="mono" style="font-size:14px; color:#C9D1E0;">not looked at</div><div style="font-size:16px; color:rgba(244,246,250,.62); margin-top:2px;">Eligible to buzz.</div></div></div>
+  </div>
+</div>
+
+<aside class="notes">We don't trust the model to guess whether you saw something. Haiku returns a bounding box, and the engine keeps about five seconds of real gaze samples from the glasses. If your gaze was inside that box recently, you've noticed it and we stay quiet; if not, it's unseen and can buzz.</aside>
+</section>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:48px 70px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">The iPhone app</p>
+<h1 class="h1" style="font-size:44px;">See why it buzzed. Teach it new senses.</h1>
+<div style="display:flex; gap:30px; margin-top:26px; justify-content:space-between;">
+  <figure style="margin:0; text-align:center;"><img class="phone" src="app-log-why.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Log</b> · why it buzzed</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="app-senses-triggers.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Senses</b> · triggers</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="app-add-trigger.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Plain-English</b> trigger</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="app-haptics.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Haptics</b> · link check</figcaption></figure>
+  <figure style="margin:0; text-align:center;"><img class="phone" src="app-settings-bonjour.jpg" style="height:440px; width:auto;">
+<figcaption style="font-size:16px; margin-top:12px; color:rgba(244,246,250,.75);"><b>Zero-config</b> · Bonjour</figcaption></figure>
+</div>
+
+<aside class="notes">The app is the window into the system. The Log shows every buzz with Haiku's reason, Senses is where you write new triggers in plain English like 'someone holding a knife and I haven't looked at it', and Haptics checks each hop of the link with live milliseconds. It finds the Mac by itself over Bonjour, no setup.</aside>
+</section>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    .eyebrow { font-family:'JetBrains Mono', monospace; font-size:14px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#FF4D5E; margin:0 0 14px; }
+    .h1 { font-family:'Space Grotesk', sans-serif; font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.02em; margin:0; color:#F4F6FA; }
+    .sub { font-size:21px; line-height:1.4; color:rgba(244,246,250,.62); margin:14px 0 0; max-width:980px; }
+    .red { color:#FF4D5E; }
+    .blue { color:#5AA9FF; }
+    .card { background:#151923; border:1px solid #242A37; border-radius:16px; padding:22px 24px; }
+    .card h3 { font-family:'Space Grotesk', sans-serif; font-size:23px; margin:12px 0 6px; color:#F4F6FA; font-weight:600; }
+    .card p { font-size:16px; line-height:1.42; margin:0; color:rgba(244,246,250,.66); }
+    .mono { font-family:'JetBrains Mono', monospace; }
+    .chip { display:inline-block; font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:700; padding:4px 10px; border-radius:999px; background:#1E2431; color:#C9D1E0; border:1px solid #2C3444; }
+    .tbd { color:#FFB020; font-weight:700; }
+    .phone { border-radius:26px; border:3px solid #2C3444; box-shadow:0 18px 40px rgba(0,0,0,.5); display:block; }
+    .notes { display:none; }
+  </style>
+</helmet>
+<section style="position:relative; width:100%; height:100vh; overflow:hidden; display:flex; flex-direction:column; padding:60px 80px; background:#0B0D12; color:#F4F6FA; font-family:'Inter', system-ui, sans-serif; ">
+
+<p class="eyebrow">Temporal layer</p>
+<h1 class="h1" style="font-size:44px;">Change over time, not one snapshot.</h1>
+<div style="display:flex; gap:30px; margin-top:24px; align-items:flex-start;">
+  <div><svg viewBox="0 0 760 200" width="760" height="200">
+<g transform="translate(0,0)">
+<rect x="0" y="20" width="230" height="170" rx="10" fill="#151923" stroke="#2C3444"/>
+<rect x="0" y="140" width="230" height="50" fill="#1D4E89" opacity=".85"/><rect x="0" y="137" width="230" height="5" fill="#5AA9FF"/>
+<g transform="translate(115,34)" stroke="#F4F6FA" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6">
+<circle cx="0" cy="0" r="8"/><path d="M0 8v26M0 34l-9 20M0 34l9 20M0 16l-12 8M0 16l12 8"/></g>
+<text x="115" y="12" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#8C95A8">t-1.4s</text>
+</g><g transform="translate(265,0)">
+<rect x="0" y="20" width="230" height="170" rx="10" fill="#151923" stroke="#2C3444"/>
+<rect x="0" y="140" width="230" height="50" fill="#1D4E89" opacity=".85"/><rect x="0" y="137" width="230" height="5" fill="#5AA9FF"/>
+<g transform="translate(115,58)" stroke="#F4F6FA" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8">
+<circle cx="0" cy="0" r="8"/><path d="M0 8v26M0 34l-9 20M0 34l9 20M0 16l-12 8M0 16l12 8"/></g>
+<text x="115" y="12" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#8C95A8">t-0.7s</text>
+</g><g transform="translate(530,0)">
+<rect x="0" y="20" width="230" height="170" rx="10" fill="#151923" stroke="#2C3444"/>
+<rect x="0" y="140" width="230" height="50" fill="#1D4E89" opacity=".85"/><rect x="0" y="137" width="230" height="5" fill="#5AA9FF"/>
+<g transform="translate(115,80)" stroke="#F4F6FA" stroke-width="3" stroke-linecap="round" fill="none" opacity="1">
+<circle cx="0" cy="0" r="8"/><path d="M0 8v26M0 34l-9 20M0 34l9 20M0 16l-12 8M0 16l12 8"/></g>
+<text x="115" y="12" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#FF4D5E">now</text>
+</g>
+</svg><p style="font-size:16px; color:rgba(244,246,250,.62); margin:8px 0 0; max-width:740px;">3 labelled frames in the same Haiku call. Code keeps the trend; only <b style="color:#fff;">relative</b> signals, no metres from a camera.</p></div>
+  <div style="flex:1; display:grid; gap:10px;">
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">gap</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">subject ↔ target, in body-heights</div></div>
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">loom</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">box area vs last tick (&gt;1 = coming at you)</div></div>
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">ordinal</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">closer / same / farther</div></div>
+    <div class="card" style="padding:14px 18px;"><div class="mono red" style="font-size:14px; font-weight:700;">touching</div><div style="font-size:15px; color:rgba(244,246,250,.7); margin-top:4px;">yes / no</div></div>
+  </div>
+</div>
+<p style="font-size:17px; margin:18px 0 0; color:rgba(244,246,250,.8);">Fires on a consistent trend for ≥ 3 ticks (or touching) · hysteresis + cooldown so it doesn't chatter.</p>
+
+<aside class="notes">Some hazards are about change, like a person getting closer to the water. For those triggers Haiku sees three frames labelled with their times, and returns boxes plus closer-or-farther. The code remembers the trend using only relative measures, like the gap in body-heights, and fires once it's consistent for three ticks.</aside>
+</section>
+</x-dc>
+</body>
+</html>
