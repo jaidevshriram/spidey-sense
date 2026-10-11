@@ -100,7 +100,7 @@ chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
 | Dot trigger over Bluetooth, stock SDK (6 writes) | 361 ms median |
 | Dot trigger over Bluetooth, `dots/fastfire` (buzz starts after 2 writes) | **117 ms median**, 150 ms worst |
 | Bluetooth connect + discover | 4–5 s |
-| Claude Haiku 5.5 per frame (512 px) | 0.9–1.0 s median, 1.2–1.4 s p90 |
+| Claude Haiku 5.5, frame → cue (384 px, streamed early fields, 2 calls in flight) | **0.92 s median, 1.20 s p90** (was 1.28 / 1.41 s); ~3 results/s |
 | Neon over phone hotspot: scene+gaze | 1600x1200 @ 9–18 fps, gaze-only 130 Hz; capture→Mac 110–150 ms median (spikes to ~1 s p90) |
 | Neon + Haiku through the engine (hotspot) | Haiku 1.1 s median, e2e (glasses capture → cue) 1.6 s median, 1.9 s p90 |
 | El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |

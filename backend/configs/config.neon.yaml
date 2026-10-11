@@ -11,9 +11,12 @@ source:
 detector:
   type: vlm
   model: claude-haiku-5-5
-  max_side: 512
+  max_side: 384
+  jpeg_quality: 70
+  concurrency: 2
+  stream: true
   max_tokens: 200
-  min_interval_s: 0.5           # at most 2 calls/s; stale frames are dropped
+  min_interval_s: 0.4
   env_file: ../../.env          # repo-root .env (relative to this file); only if ANTHROPIC_API_KEY is unset
 
 detect_every_s: 0               # the detector throttles itself

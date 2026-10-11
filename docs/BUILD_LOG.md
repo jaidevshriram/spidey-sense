@@ -308,3 +308,13 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   1.9 s p90. Haiku on the real scene: hazard none every time ("Office scene with laptops, drinks, and a person seated;
   nothing moving toward the wearer or dangerous."). Internet works through the hotspot.
 - Gotcha: the test engine also advertises `_spidey._tcp` over Bonjour while it runs.
+
+### 18:12 Haiku latency, still a single path (no second detector, per Jaidev)
+- `VLMDetector` rewrite: up to `concurrency` (2) calls in flight launched every `min_interval_s` (0.4 s) on the newest
+  frame, with stale results dropped by frame timestamp; `stream: true` with JSON keys ordered hazard, urgency, x, seen_by_user
+  first, so an **early Detection** is emitted the moment they've streamed and built-in triggers act on it (the full result
+  with custom triggers + reasons follows); `max_side` 384 + JPEG q70; system prompt with `cache_control`.
+- Benchmark on the test scenes (1 custom trigger, console sink, 42 s each):
+  baseline: call 1217 / 1320 ms, frame→cue **1283 / 1410 ms** (median/p90), 34 results, 34/34 correct.
+  optimised: early fields 897 ms, full 1151 ms; frame→cue **921 / 1203 ms**; 125 results (~3/s); 125/125 correct.
+- Prompt caching: `cache_read_input_tokens` = 0. The ~590-token prompt is under Haiku's minimum cacheable length, so it's a no-op for now.
