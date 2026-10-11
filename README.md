@@ -63,6 +63,18 @@ python3 backend/run.py --sink datafeel-ble         # full pipeline buzzing the D
 Only one program can hold the El Jefe Bluetooth link at a time. Our El Jefe is **DataFeelCE**; other kits at the
 venue advertise as DataFeel1E/3A/7E/32/36, and the code only connects on an exact name match.
 
+**Neon (wireless, via the Companion phone).** Glasses plug into the Companion phone; the phone streams scene
+video + gaze over Wi-Fi to the Mac (Pupil Labs Real-time API). Phone and Mac must be on the same Wi-Fi.
+
+```bash
+./scripts/neon_check.sh                 # finds the phone, prints battery / fps / gaze rate / delay, opens a live view
+./scripts/neon_check.sh 192.168.1.23    # if discovery is blocked on venue Wi-Fi: phone IP from the Companion app
+./scripts/neon_check.sh --mock          # no device
+python3 backend/run.py --config backend/configs/config.neon.yaml              # real Neon + Haiku, console output
+python3 backend/run.py --config backend/configs/config.neon.yaml --sink datafeel-ble   # + buzz (Terminal.app)
+```
+If discovery fails, set `source.host: <phone ip>` in `config.neon.yaml`.
+
 iOS: open `ios/SpideySense/SpideySense.xcodeproj` (or `cd ios/SpideySense && xcodegen generate`), pick your
 signing team, run, and set the server URL to `ws://<mac-ip>:8765` in Settings.
 
@@ -75,6 +87,8 @@ signing team, run, and set the server URL to `ws://<mac-ip>:8765` in Settings.
 | Dot trigger over Bluetooth, `dots/fastfire` (buzz starts after 2 writes) | **117 ms median**, 150 ms worst |
 | Bluetooth connect + discover | 4–5 s |
 | Claude Haiku 5.5 per frame (512 px) | 0.9–1.0 s median, 1.2–1.4 s p90 |
+| El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |
+| Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
 
 ## Keeping this README current
 

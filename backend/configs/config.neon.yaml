@@ -1,0 +1,38 @@
+# Real Neon (Companion phone over Wi-Fi) + Haiku. Console sink by default; add --sink datafeel-ble (Terminal.app) to buzz.
+#   python3 neon/check_companion.py            # first: is the phone reachable, fps, latency
+#   python3 backend/run.py --config backend/configs/config.neon.yaml
+
+source:
+  type: neon
+  mode: realtime              # Neon -> Companion phone -> Wi-Fi -> this Mac (wireless)
+  # host: 192.168.1.23        # phone IP if auto-discovery fails (shown in the Companion app)
+
+detector:
+  type: vlm
+  model: claude-haiku-5-5
+  max_side: 512
+  max_tokens: 150
+  min_interval_s: 0.5           # at most 2 calls/s; stale frames are dropped
+  env_file: ../../.env          # repo-root .env (relative to this file); only if ANTHROPIC_API_KEY is unset
+
+detect_every_s: 0               # the detector throttles itself
+rules_file: rules.json   # shared with the app (Senses tab)      # separate from the app-edited rules.json; falls back to `rules:` below
+
+rules:
+  - name: blindspot
+    feel: urgent
+    if: {unseen: true, min_urgency: 0.6}
+    cooldown_s: 3
+  - name: heads_up
+    feel: ambient
+    if: {unseen: true, max_urgency: 0.59}   # blindspot owns >= 0.6
+    cooldown_s: 6
+
+sink:
+  type: console
+
+log: logs/neon_events.jsonl
+
+server:
+  enabled: true
+  port: 8765

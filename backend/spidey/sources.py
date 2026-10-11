@@ -128,7 +128,7 @@ class NeonSource(GazeFrameSource):
 
     APP_DIR = Path(__file__).resolve().parents[2] / "neon"
 
-    def __init__(self, mode: str = "capture", host: str | None = None, app_dir: str | None = None):
+    def __init__(self, mode: str = "realtime", host: str | None = None, app_dir: str | None = None):
         app = Path(app_dir).expanduser() if app_dir else self.APP_DIR
         sys.path.insert(0, str(app))
         from neon_app import open_source  # lazy: only needed with real hardware

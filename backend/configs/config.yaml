@@ -8,7 +8,8 @@ source:
   gaze_point: [0.5, 0.5]
   # --- real hardware (when the Neon is here) ---
   # type: neon
-  # mode: capture       # capture (USB via Pupil Capture) | realtime (Companion phone)
+  # mode: realtime      # realtime = Companion phone over Wi-Fi (default) | capture = USB via Pupil Capture
+  # host: 192.168.1.23  # phone IP if auto-discovery is blocked on the venue Wi-Fi
 
 detector:
   type: fake            # fake | vlm  (vlm: see config.vlm.yaml)
