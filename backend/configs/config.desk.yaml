@@ -30,7 +30,7 @@ sink:
   ble_name: DataFeelCE        # OUR El Jefe only
 
 radar:
-  enabled: true
+  enabled: false              # radar off for now; re-enable here or use config.desk_radar.yaml
   url: ws://localhost:8090    # radar-lab server.py (owns the board)
   side_sign: 1                # flip to -1 if left/right come out swapped
 

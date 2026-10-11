@@ -129,13 +129,14 @@ struct DeviceCard: View {
     private var statusLabel: String {
         switch device.status {
         case "coming_soon": "Coming soon"
+        case "off": "Off"
         default: device.status.capitalized
         }
     }
     private var color: Color {
         switch device.status {
         case "connected": .green; case "simulated": .teal; case "connecting": .orange
-        case "coming_soon": .gray; default: .red
+        case "coming_soon", "off": .gray; default: .red
         }
     }
     private var lastSeen: String {

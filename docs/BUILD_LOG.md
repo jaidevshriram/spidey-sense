@@ -398,3 +398,7 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - Tests: 10/10 unit tests; against `radar-lab/server.py`: `--scenario approach` → 1 fire (too_close 0.50 m);
   `--scenario two_people` → 2 fires in 20 s (the approacher each loop; the walk-by never fired);
   `--replay recordings/182745-desk_idle` → 2 "too close" fires at ~0.55 m (the seated person; mounting issue). Server→sense 3–4 ms median.
+
+### 19:00 Radar off for now (Jaidev)
+- `config.desk.yaml` has `radar.enabled: false`; `config.desk_radar.yaml` = the same config with radar on. The engine reports the radar
+  card as `status: "off"`, and the app shows "Off" in gray (not red). Verified: the desk config starts with no radar logs, retries or errors.

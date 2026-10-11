@@ -1,4 +1,4 @@
-# Status (updated 2026-10-10 18:58 PT)
+# Status (updated 2026-10-10 19:00 PT)
 
 One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 
@@ -25,6 +25,9 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 - **Oura heart-rate sense** (stub + replay/fake backends + app template/card; live ring needs re-pairing at home, see `docs/oura.md` when it lands).
 - **Live desk tests** with the real Neon + Dot (the glasses were unplugged while the phone charged).
 
+## Paused
+- **Radar** (per Jaidev, 19:00): off in `config.desk.yaml`; the code stays. Re-enable with `config.desk_radar.yaml`. The app shows Radar as "Off" (gray).
+
 ## Known issues
 - Bluetooth must run from Terminal.app (the Claude app has no Bluetooth permission → exit 134). Only one process can hold the El Jefe link.
 - Prompt caching is a no-op (prompt below Haiku's minimum cacheable length).
@@ -49,6 +52,6 @@ Desk tests A–E: see README "Desk tests" (page `./scripts/desk_test.sh`, engine
 
 ## TBD numbers (fill in after the live desk tests)
 - Glasses → buzz end to end with the latency changes (last measured before them: 1.6 s median / 1.9 s p90)
-- Radar → buzz live (estimate ≈ 0.15 s: 29 ms radar→cue + ~117 ms BLE)
+- Radar → buzz live (paused; estimate ≈ 0.15 s)
 - Temporal trigger: approach → buzz latency
 - Desk test hit/miss table (A–D + radar)

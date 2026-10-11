@@ -91,12 +91,12 @@ Mac's clock with Pupil Labs Time Echo, so `e2e_ms` in the log is glasses capture
 | B: lion you haven't noticed | `lion_unnoticed` (unseen, 3 s notice memory) | buzz while reading the text with the lion in view; silent once you look at it |
 | C: person approaching water | `person_to_water` (temporal, any) | buzz as the person nears the water edge; nothing while far or walking away |
 | D: same, only if you're not watching | `person_to_water_unwatched` (temporal, unseen) | buzz only while you look at the text |
-| E: someone behind you | `someone_behind` (radar, within 2 m, ≥ 0.3 m/s) | buzz when someone walks up; walk-bys ignored |
+| E: someone behind you (**radar off for now**) | `someone_behind` (radar, within 2 m, ≥ 0.3 m/s) | buzz when someone walks up; walk-bys ignored |
 
 ```bash
 ./scripts/desk_test.sh                     # desk test page on :8095 (lion etc. on the right, text on the left; ?test=C for the lake)
-~/Downloads/radar-lab/.venv/bin/python ~/Downloads/radar-lab/server.py      # radar (board); --scenario approach without it
-./scripts/engine_ble.sh --config backend/configs/config.desk.yaml          # Neon + Haiku + radar + Dot (Terminal.app)
+./scripts/engine_ble.sh --config backend/configs/config.desk.yaml          # Neon + Haiku + Dot (Terminal.app); radar OFF for now
+# radar later: start ~/Downloads/radar-lab/server.py, then use backend/configs/config.desk_radar.yaml
 ./scripts/desk_test.sh prerun              # dry runs on simulated scenes + scripted gaze (real Haiku)
 ./scripts/desk_test.sh check               # offline engine checks
 ```

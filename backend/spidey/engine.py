@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import yaml
 
+from . import heart as H
 from . import rules as R
 from .detectors import make_detector
 from .server import EventServer
@@ -95,6 +96,7 @@ class Controller:
         self.source = None                   # set by run(): .stats() for the status message
         self.memory = R.TriggerMemory()      # gaze history + per-trigger noticed/trend memory
         self.radar = None                    # RadarSense when cfg radar.enabled
+        self.heart = None                    # HeartRateSense when cfg heart.enabled
         self._frame_times: deque = deque()   # (ts, has_gaze) receive times, for fps / gaze Hz
         self._ev_lock = threading.Lock()     # event ids + sink calls from the engine loop and the radar thread
         self.n_events = 0
@@ -181,8 +183,8 @@ class Controller:
         neon_detail += "".join(f" · {b}" for b in bits if b)
         radar = self.radar_status()
         if radar is None:
-            radar_card = {"id": "radar", "name": "Radar", "kind": "radar", "status": "disconnected",
-                          "detail": "not enabled in config (radar.enabled)", "last_seen": None}
+            radar_card = {"id": "radar", "name": "Radar", "kind": "radar", "status": "off",
+                          "detail": "off (radar.enabled: false)", "last_seen": None}
         else:
             last = radar.get("last") or {}
             radar_card = {"id": "radar", "name": "Radar", "kind": "radar",
@@ -202,8 +204,7 @@ class Controller:
             {"id": "neon", "name": "Neon", "kind": "eye_tracker", "status": neon_status,
              "detail": neon_detail, "last_seen": self.last_frame_ts, "stats": src},
             radar_card,
-            {"id": "oura", "name": "Oura", "kind": "heart_rate", "status": "coming_soon",
-             "detail": "TODO: heart-rate source not built", "last_seen": None},
+            H.oura_card(self.heart_status()),
         ]
 
     def device_status(self) -> dict:
@@ -307,6 +308,30 @@ class Controller:
                     self.server.publish(ev)
         return out
 
+    # ---- heart rate (Oura) -----------------------------------------------------------------
+    def start_heart(self) -> None:
+        self.heart = H.start_from_config(self.cfg, self.on_heart_sample)
+
+    def heart_status(self) -> dict | None:
+        if self.heart is None:
+            return None
+        try:
+            return self.heart.status()
+        except Exception as e:
+            return {"connected": False, "backend": None, "detail": f"{type(e).__name__}: {e}"}
+
+    def on_heart_sample(self, sample: dict) -> None:
+        """Called on the heart thread for every reading; evaluates source: heart_rate triggers."""
+        with self.lock:
+            rules = [r for r in self.rules if r.enabled and r.source == "heart_rate"]
+            events = R.apply_heart(rules, sample, time.time()) if rules else []
+        out = self.emit(events)
+        if out and self.radar_log is not None:
+            with self._log_lock:
+                self.radar_log.write(json.dumps({"ts": {"heart": sample.get("ts"), "sent": time.time()},
+                                                 "heart": sample, "events": out}) + "\n")
+                self.radar_log.flush()
+
     # ---- radar ------------------------------------------------------------------------------
     def start_radar(self) -> None:
         rc = self.cfg.get("radar") or {}
@@ -373,6 +398,7 @@ class Controller:
         new = R.rule_from_dict(msg.get("rule") or {})
         with self.lock:
             last = {r.id: r._last for r in self.rules}   # keep each rule's cooldown clock
+            heart = {r.id: r._heart for r in self.rules}  # and heart triggers' armed / sustain state
             dicts = [r.to_dict() for r in self.rules]
             i = next((i for i, d in enumerate(dicts) if d["id"] == new.id), None)
             if i is None:
@@ -382,6 +408,7 @@ class Controller:
             self.rules = R.load_rules(dicts) if dicts else []  # rebuild the Rule list (unique ids)
             for r in self.rules:
                 r._last = last.get(r.id, r._last)
+                r._heart = heart.get(r.id, r._heart)
             self._rules_changed()
         return {"type": "ack", "for": "rules.upsert", "ok": True, "id": new.id}
 
@@ -531,6 +558,7 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
         with open(log_path, "a") as log:
             ctl.radar_log = log
             ctl.start_radar()
+            ctl.start_heart()
             for frame in source.frames():
                 ctl.note_frame(frame)
                 ctl.memory.add_frame(frame)          # gaze history for looked_at_s_ago
@@ -581,6 +609,11 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
         if ctl.radar is not None:
             try:
                 ctl.radar.close()
+            except Exception:
+                pass
+        if ctl.heart is not None:
+            try:
+                ctl.heart.close()
             except Exception:
                 pass
         ctl.radar_log = None

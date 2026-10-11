@@ -1,0 +1,41 @@
+# Real desk test: Neon (Companion phone, Wi-Fi) + Haiku + the Dot over Bluetooth + the radar. Terminal.app only (BLE).
+#   ./scripts/desk_test.sh                 # serves the test page on :8095 (open it on the monitor in front of you)
+#   ./scripts/engine_ble.sh --config backend/configs/config.desk.yaml
+#   radar: ~/Downloads/radar-lab/.venv/bin/python ~/Downloads/radar-lab/server.py   (ws://localhost:8090)
+# Triggers: seeded once from backend/desk_test/triggers.desk.json into backend/triggers.desk.json (all off);
+# turn on the one for each test in the app (Senses tab). Test steps: the page's own instructions + vlm/desk_test_results.md.
+
+source:
+  type: neon
+  mode: realtime              # Companion phone over Wi-Fi / its hotspot (default gateway)
+  # host: 192.168.16.142      # phone IP if needed
+
+detector:
+  type: vlm
+  model: claude-haiku-5-5
+  max_side: 512               # the picture/video panel is ~1/4 of the scene camera's width: 384 px is too small
+  jpeg_quality: 70
+  concurrency: 3              # calls in flight (temporal calls carry 3 images and take ~1.5 s)
+  stream: true
+  max_tokens: 200
+  min_interval_s: 0.4
+  env_file: ../../.env
+
+detect_every_s: 0
+rules_file: triggers.desk.json            # backend/triggers.desk.json (gitignored), edited live by the app
+rules_seed: desk_test/triggers.desk.json  # copied once when rules_file is missing
+
+sink:
+  type: datafeel-ble
+  ble_name: DataFeelCE        # OUR El Jefe only
+
+radar:
+  enabled: true
+  url: ws://localhost:8090    # radar-lab server.py (owns the board)
+  side_sign: 1                # flip to -1 if left/right come out swapped
+
+log: logs/desk_events.jsonl
+
+server:
+  enabled: true
+  port: 8765
