@@ -1,39 +1,90 @@
 # Spidey Sense
 
-A wearable "spidey sense": eye-tracking glasses see what's around you, Claude notices what **you haven't looked at**,
-and a haptic Dot on your body taps you, with Spidey's voice in your ear saying why. Hands-free; set up by talking to it.
+**A sixth sense you wear.** Eye-tracking glasses see what is around you and where you are looking. Claude notices
+what matters that **you have not looked at yet**. A small haptic Dot on your wrist buzzes, and your phone says why.
+If you already saw it, Spidey stays quiet.
 
-Hackathon project (Interface Hackathon, Oct 2026).
+Built at the INTERFACE hackathon, October 2026.
 
 ![Demo screen: the glasses' view with gaze, Haiku's boxes and the buzz banner, next to the live-mirrored phone app](docs/screenshots/demo-screen.jpg)
 
-*A real moment from a test walk (not a simulation): reading my phone while walking, the glasses' gaze (coral ring) is on
-the phone, Haiku boxes the cardboard box ahead, and the Dot buzzes 1.7 s after the frame ("Something in my way",
-amber). Left: the demo screen's glasses view (`/demo`). Right: the app showing that run's real buzzes ("A table. You
-hadn't looked at it.").*
+*A real moment from a test walk, not a simulation. I am reading my phone while walking. My gaze (coral ring) is on the
+phone. Haiku boxes the cardboard box ahead, and the Dot buzzes 1.7 s after the frame ("Something in my way", amber).
+Left: the demo screen's glasses view (`/demo`). Right: the app showing that run's real buzzes.*
 
-## What it does
+## 1. What it is
 
-- **Gaze-aware triggers in plain English.** "A lion I haven't noticed", "someone about to attack me", "something in my
-  way". Each trigger buzzes *only if you haven't noticed it*, *when you look at it*, or *always*. "Noticed" = your real
-  gaze rested on Haiku's box for ~0.2 s (a glance doesn't count); a 3 s notice memory keeps it quiet right after.
-- **~1 s from sight to touch.** One Claude Haiku call per tick (5 overlapping calls, a new frame every 0.25 s, streamed);
-  a gaze cache re-checks gaze against Haiku's boxes on every frame, so looking away fires in ~0.25 s.
-- **Over time, relative only.** Temporal triggers compare 3 labelled frames (closer / same / farther, touching) and a
-  trend layer (gap in body-heights, looming). Time to contact comes from how fast a box grows. No absolute distances.
-- **Haptics.** DataFeel Dot over Bluetooth (El Jefe hub): vibration patterns, RGB colour per trigger, thermal; 117 ms
-  median trigger; health checks, auto baseline, thermal safety.
-- **Voice (ElevenLabs).** Spidey says why it buzzed (eleven_flash_v2_5, 0.3–0.8 s), in your AirPods or the phone.
-  *Hold to tell Spidey*: say "warn me if a dog comes near me" → scribe_v2 → Haiku drafts the trigger → you confirm.
-- **Hearing.** The glasses' microphone → ElevenLabs speech-to-text with sound tags (horn, siren, shouting) → "Heard
-  (last 5 s): …" goes into the same Haiku call, so a trigger can use sight and sound. Still one detection path.
-- **Oura heart rate.** Your real ring via Oura's cloud API (OAuth): heart rate on Home and a "heart racing" trigger
-  (readings arrive minutes late; history never buzzes). Live BLE via `open_oura` is also built (needs re-pairing).
-- **Walking.** "Only while I'm walking" per trigger (Neon IMU step detection, tested on synthetic data; unknown never blocks). Note: with our Companion app version the IMU stream currently arrives as all zeros, so walking shows as unknown.
-- **iOS app** for everyone: what buzzed and why, collapsed repeats, step-by-step trigger wizard, voice, Debug tools.
-- **Traces for every call**: the exact images Haiku saw, prompt, reply, timings and why each trigger did or didn't fire.
+### Why
 
-## The app
+Self-driving cars have super-sensors. They see in every direction and never get distracted. People do not. We look
+at our phones, we focus on one thing, and we miss the box on the floor or the hand coming toward us.
+
+Spidey Sense gives a person one extra sense. It does not take over. It does not decide for you. It keeps you in the
+loop and makes you a little more aware: a tap on the wrist means "look around, something needs you".
+
+### The hardware
+
+| Part | What it is | What we use it for |
+|---|---|---|
+| **Pupil Labs Neon** | Eye-tracking glasses. A scene camera in the frame plus eye cameras that measure where you look. They plug into an Android "Companion" phone. | The Companion phone streams the scene video and your gaze point to a Mac over Wi-Fi. |
+| **DataFeel Dot** | A small haptic device about the size of a coin. It can vibrate, glow in any colour and warm up or cool down. Dots chain to a hub called El Jefe. | A buzz (and a colour) on your wrist, sent from the Mac over Bluetooth. |
+| **MacBook** | Runs the engine (Python). | Calls Claude Haiku, decides when to buzz, drives the Dot, serves the app. |
+| **iPhone app** | SwiftUI app. | Shows and speaks why it buzzed. You add your own triggers by talking. |
+| **Oura ring** (optional) | Smart ring. | Heart rate through Oura's cloud, for a "heart racing" trigger. |
+
+### How it feels
+
+You walk across a room reading a message. There is a box on the floor ahead. You have not looked at it.
+About a second and a half later the Dot on your wrist buzzes amber, and Spidey's voice in your AirPods says why. You
+look up and step around it. The app logs it under "Something in my way" with the picture the glasses saw.
+
+Now do the same walk, but glance at the box first. Nothing happens. You already know it is there.
+
+You can teach it new things. Hold the talk button and say *"warn me if a dog comes near me"*. Spidey drafts the trigger,
+you confirm it, and it is live.
+
+### What a trigger is
+
+A trigger is a sentence plus a rule:
+- **What to watch for**, in plain words: "something in my way", "someone about to attack me", "a lion I haven't noticed".
+- **When to warn you**: *only if you haven't noticed it* (the default idea), *when you look at it*, or *always*.
+- **How it feels**: vibration pattern, Dot colour, and urgency.
+
+## 2. How it works
+
+The Mac sends the newest glasses frame, with your gaze point drawn on it, to **Claude Haiku** every 0.25 s
+(up to 5 calls overlap; each answer takes about a second).
+One Haiku call checks the built-in hazard check and every trigger you defined. For each match it returns a box, an
+urgency and a short reason. The engine then checks your **real gaze history** against that box: did your eyes rest on
+it (about 0.2 s; a glance does not count)? If not, and the trigger says "only if you haven't noticed it", the Dot buzzes
+and the phone speaks the reason. A gaze cache re-checks your gaze against Haiku's latest boxes on every frame, so
+looking away from something can fire in about 0.25 s without waiting for a new Haiku call.
+
+### What works today, and what does not
+
+| Works (tested live) | Limits (be aware) |
+|---|---|
+| Neon glasses → Mac over the Companion phone's 5 GHz hotspot (~90 ms median) | **Walking detection does not work today.** The code exists (step detection from the Neon IMU, tested on synthetic data), but with our Companion app version the IMU stream arrives as all zeros. Walking shows as "unknown" and never blocks a trigger. |
+| Claude Haiku on live frames, frame → cue 0.92 s median on test scenes | **The glasses microphone does not work today.** The hearing code (ElevenLabs speech-to-text with sound tags) is built but gets no audio from the glasses. |
+| Gaze-aware triggers: silent when you looked, buzz when you did not | **Oura heart rate is only as fresh as the last sync.** Readings reach the cloud minutes late; readings older than 15 min never buzz. |
+| Dot over Bluetooth, 117 ms median to buzz | **Radar is paused.** The code stays in `radar/`. |
+| iOS app: event log, reasons, voice, hold-to-talk triggers, step-by-step wizard | Bluetooth must run from Terminal.app on the Mac. |
+| Live punch test: a fist toward the face buzzed ~0.96 s after the frame | Over-time triggers use relative signals only (closer / farther, looming). No absolute distances. |
+
+### Measured latencies (from the logs)
+
+| Step | Time |
+|---|---|
+| Glasses capture → Mac (5 GHz hotspot) | ~90 ms median, ~120 ms p90 |
+| Haiku, frame → cue (test scenes) | 0.92 s median, 1.20 s p90 |
+| Glasses capture → cue, real Neon + Haiku through the engine | 1.6 s median, 1.9 s p90 |
+| Gaze lands → buzz (cached boxes, world sim) | 0.24 s |
+| Dot trigger over Bluetooth | 117 ms median, 150 ms worst |
+| Spidey's voice (ElevenLabs TTS) | 0.3–0.8 s |
+
+Full table: [Measured so far](#measured-so-far).
+
+## 3. The app
 
 | Home | Why it buzzed | Talk to Spidey | Spidey heard you |
 |:-:|:-:|:-:|:-:|
@@ -45,7 +96,7 @@ hadn't looked at it.").*
 
 More (large text, iPhone SE, photo view, Oura on Home, a 34 s screen recording `flow.mp4`): `docs/screenshots/redesign/`.
 
-## Architecture
+## 4. Architecture and components
 
 ```
  WORN ON YOU                                   ON THE TABLE (MacBook)                          YOUR PHONE
@@ -85,7 +136,59 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `docs/` | `STATUS.md` (current state, one page), `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped), `deck/` (slides) |
 | `scripts/` | setup, API key, playground, Bluetooth test/latency, `traces.sh` (trace viewer :8096) |
 
-## Quickstart
+Note on the diagram: the IMU and microphone streams are wired up, but today the IMU sends zeros and the microphone sends no
+audio (see *What works today*).
+
+### All features in detail
+
+- **Gaze-aware triggers in plain English.** "A lion I haven't noticed", "someone about to attack me", "something in my
+  way". Each trigger buzzes *only if you haven't noticed it*, *when you look at it*, or *always*. "Noticed" = your real
+  gaze rested on Haiku's box for ~0.2 s (a glance doesn't count); a 3 s notice memory keeps it quiet right after.
+- **~1 s from sight to touch.** One Claude Haiku call per tick (5 overlapping calls, a new frame every 0.25 s, streamed);
+  a gaze cache re-checks gaze against Haiku's boxes on every frame, so looking away fires in ~0.25 s.
+- **Over time, relative only.** Temporal triggers compare 3 labelled frames (closer / same / farther, touching) and a
+  trend layer (gap in body-heights, looming). Time to contact comes from how fast a box grows. No absolute distances.
+- **Haptics.** DataFeel Dot over Bluetooth (El Jefe hub): vibration patterns, RGB colour per trigger, thermal; 117 ms
+  median trigger; health checks, auto baseline, thermal safety.
+- **Voice (ElevenLabs).** Spidey says why it buzzed (eleven_flash_v2_5, 0.3–0.8 s), in your AirPods or the phone.
+  *Hold to tell Spidey*: say "warn me if a dog comes near me" → scribe_v2 → Haiku drafts the trigger → you confirm.
+- **Hearing (built, not working today).** The glasses' microphone → ElevenLabs speech-to-text with sound tags (horn,
+  siren, shouting) → "Heard (last 5 s): …" goes into the same Haiku call. The glasses microphone delivers no audio
+  today, so this path is idle.
+- **Oura heart rate.** Your real ring via Oura's cloud API (OAuth): heart rate on Home and a "heart racing" trigger
+  (readings arrive minutes late; history never buzzes). Live BLE via `open_oura` is also built (needs re-pairing).
+- **Walking (built, not working today).** "Only while I'm walking" per trigger (Neon IMU step detection, tested on
+  synthetic data; unknown never blocks). With our Companion app version the IMU stream arrives as all zeros, so walking
+  always shows as unknown.
+- **iOS app** for everyone: what buzzed and why, collapsed repeats, step-by-step trigger wizard, voice, Debug tools.
+- **Traces for every call**: the exact images Haiku saw, prompt, reply, timings and why each trigger did or didn't fire.
+
+### Measured so far
+
+| | |
+|---|---|
+| Dot trigger over USB | 48 ms |
+| Dot trigger over Bluetooth, stock SDK (6 writes) | 361 ms median |
+| Dot trigger over Bluetooth, `dots/fastfire` (buzz starts after 2 writes) | **117 ms median**, 150 ms worst |
+| Bluetooth connect + discover | 4–5 s |
+| Claude Haiku 5.5, frame → cue (384 px, streamed early fields, 2 calls in flight) | **0.92 s median, 1.20 s p90** (was 1.28 / 1.41 s); ~3 results/s |
+| Neon over phone hotspot: scene+gaze | 1600x1200 @ 9–18 fps, gaze-only 130 Hz; capture→Mac 110–150 ms median (spikes to ~1 s p90) |
+| Neon + Haiku through the engine (hotspot) | Haiku 1.1 s median, e2e (glasses capture → cue) 1.6 s median, 1.9 s p90 |
+| El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |
+| Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
+| Desk dry runs A–D (sim scene, scripted gaze, real Haiku, 512 px) | all pass; frame→fire 1.2–1.3 s (single image), 1.5–1.65 s (temporal, 3 images) |
+| World-sim A–D (3 reps, real Haiku, gaze cache) | all pass, 0 false alarms; **gaze lands → buzz 0.24 s** (cached boxes), new object → buzz ~1.5 s (Haiku) |
+| Neon over the phone hotspot on **5 GHz** | capture→Mac **~90 ms median, ~120 ms p90** (2.4 GHz: 0.5–3 s bursts) |
+| Haiku call through the phone's cellular uplink | 1.1–1.7 s median, slow tails 3–5 s (12.5 % packet loss measured); 5 overlapping calls hedge it |
+| Obstacle trigger, 56 hand-labelled live frames | Haiku v1 prompt **96 % recall**, 19 % false alarms (Sonnet: same recall, +0.7 s) — `vlm/prompt_ab_obstacles.md` |
+| Attack trigger, reworded for recall (replay of missed frames) | 0/14 → **14/14**, 0/8 false alarms |
+| ElevenLabs TTS (eleven_flash_v2_5) / STT (scribe_v2, 3 s window) | 0.3–0.8 s / 0.45–0.85 s |
+| Voice → drafted trigger (STT + Haiku) | ~2–3 s |
+| Radar frame → cue | ~29 ms median (radar-lab) + ~4 ms server→sense; + ~117 ms BLE buzz ≈ 0.15 s |
+
+## 5. Run it
+
+### Quickstart
 
 ```bash
 cd ~/Desktop/GIT-Projects/spidey-sense
@@ -193,29 +296,19 @@ Screenshots + a short screen recording: `docs/screenshots/redesign/` (`flow.mp4`
 (`-tab`, `-openWizard`, `-wizardTile`, `-wizardStep`, `-openEvent`, `-expandPhoto`, `-debugOpen`, `-demoWizard`, `-demoArrive` …)
 are listed in the views' `onAppear`.
 
-## Measured so far
+### Demo screen (Mac, full screen)
 
-| | |
-|---|---|
-| Dot trigger over USB | 48 ms |
-| Dot trigger over Bluetooth, stock SDK (6 writes) | 361 ms median |
-| Dot trigger over Bluetooth, `dots/fastfire` (buzz starts after 2 writes) | **117 ms median**, 150 ms worst |
-| Bluetooth connect + discover | 4–5 s |
-| Claude Haiku 5.5, frame → cue (384 px, streamed early fields, 2 calls in flight) | **0.92 s median, 1.20 s p90** (was 1.28 / 1.41 s); ~3 results/s |
-| Neon over phone hotspot: scene+gaze | 1600x1200 @ 9–18 fps, gaze-only 130 Hz; capture→Mac 110–150 ms median (spikes to ~1 s p90) |
-| Neon + Haiku through the engine (hotspot) | Haiku 1.1 s median, e2e (glasses capture → cue) 1.6 s median, 1.9 s p90 |
-| El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |
-| Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
-| Desk dry runs A–D (sim scene, scripted gaze, real Haiku, 512 px) | all pass; frame→fire 1.2–1.3 s (single image), 1.5–1.65 s (temporal, 3 images) |
-| World-sim A–D (3 reps, real Haiku, gaze cache) | all pass, 0 false alarms; **gaze lands → buzz 0.24 s** (cached boxes), new object → buzz ~1.5 s (Haiku) |
-| Neon over the phone hotspot on **5 GHz** | capture→Mac **~90 ms median, ~120 ms p90** (2.4 GHz: 0.5–3 s bursts) |
-| Haiku call through the phone's cellular uplink | 1.1–1.7 s median, slow tails 3–5 s (12.5 % packet loss measured); 5 overlapping calls hedge it |
-| Obstacle trigger, 56 hand-labelled live frames | Haiku v1 prompt **96 % recall**, 19 % false alarms (Sonnet: same recall, +0.7 s) — `vlm/prompt_ab_obstacles.md` |
-| Attack trigger, reworded for recall (replay of missed frames) | 0/14 → **14/14**, 0/8 false alarms |
-| ElevenLabs TTS (eleven_flash_v2_5) / STT (scribe_v2, 3 s window) | 0.3–0.8 s / 0.45–0.85 s |
-| Voice → drafted trigger (STT + Haiku) | ~2–3 s |
-| Radar frame → cue | ~29 ms median (radar-lab) + ~4 ms server→sense; + ~117 ms BLE buzz ≈ 0.15 s |
+`./scripts/traces.sh` (viewer on :8096) + the engine running → open **http://localhost:8096/demo** and go full screen.
+- Left 70 %: the Neon scene with the gaze ring + trail, Haiku's boxes (amber = matched, Dot colour = buzzed), a banner on
+  every buzz (trigger, Haiku's reason, Dot colour, frame→buzz time) with a glow in the Dot's colour, "Heard: …" when the
+  mic catches something, pills for gaze / walking / hearing / Oura heart rate (each hidden when it has nothing real).
+- Right 30 %: the iPhone app, mirrored live over Wi-Fi: in the app, Settings → Demo → **Mirror screen to Mac**
+  (ReplayKit in-app capture; only Spidey Sense is shared; iOS asks once). ≤ 8 fps while the screen changes, 540 px JPEG.
 
+Demo-day checklist: Companion phone hotspot on **5 GHz**, Mac + iPhone joined to it (Android hotspots block Bonjour: set
+`ws://<mac ip>:8765` once in the app under Debug → Engine); El Jefe charged and **unplugged before** starting the engine;
+Companion app microphone on (for hearing); open the Oura app so the ring syncs; `HAIKU_OFF=1` starts with Haiku paused
+(the engine's `haiku` command switches it live).
 ## Keeping this README current
 
 Every change that adds or changes a feature, command, folder, config option or measurement updates this README
@@ -235,17 +328,3 @@ in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CL
 - **Oura** API v2 (OAuth) for heart rate; `open_oura` (MIT, github.com/Th0rgal/open_oura) for the live-BLE option
   (`backend/spidey/heart.py`, setup in `docs/oura.md`).
 - **Plus Jakarta Sans** (SIL OFL 1.1, Tokotype), the app's heading font: `ios/SpideySense/SpideySense/Fonts/` (with `OFL.txt`).
-
-## Demo screen (Mac, full screen)
-
-`./scripts/traces.sh` (viewer on :8096) + the engine running → open **http://localhost:8096/demo** and go full screen.
-- Left 70 %: the Neon scene with the gaze ring + trail, Haiku's boxes (amber = matched, Dot colour = buzzed), a banner on
-  every buzz (trigger, Haiku's reason, Dot colour, frame→buzz time) with a glow in the Dot's colour, "Heard: …" when the
-  mic catches something, pills for gaze / walking / hearing / Oura heart rate (each hidden when it has nothing real).
-- Right 30 %: the iPhone app, mirrored live over Wi-Fi: in the app, Settings → Demo → **Mirror screen to Mac**
-  (ReplayKit in-app capture; only Spidey Sense is shared; iOS asks once). ≤ 8 fps while the screen changes, 540 px JPEG.
-
-Demo-day checklist: Companion phone hotspot on **5 GHz**, Mac + iPhone joined to it (Android hotspots block Bonjour: set
-`ws://<mac ip>:8765` once in the app under Debug → Engine); El Jefe charged and **unplugged before** starting the engine;
-Companion app microphone on (for hearing); open the Oura app so the ring syncs; `HAIKU_OFF=1` starts with Haiku paused
-(the engine's `haiku` command switches it live).
