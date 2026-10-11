@@ -75,8 +75,14 @@ struct AlertsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var live: Bool { stream.isLive }
-    private var mine: [SenseRule] { stream.rules.filter { $0.isCustom } }
-    private var basics: [SenseRule] { stream.rules.filter { !$0.isCustom } }
+    /// One list, active triggers first; within each group your own triggers before the built-ins (stable order).
+    private var sortedRules: [SenseRule] {
+        stream.rules.enumerated().sorted { a, b in
+            let ka = (a.element.enabled ? 0 : 1, a.element.isCustom ? 0 : 1, a.offset)
+            let kb = (b.element.enabled ? 0 : 1, b.element.isCustom ? 0 : 1, b.offset)
+            return ka < kb
+        }.map(\.element)
+    }
     private var suggested: [SenseRule] {
         let ids = Set(stream.rules.map(\.id))
         return MockData.customTemplates.filter { !ids.contains($0.id) }
@@ -107,15 +113,9 @@ struct AlertsView: View {
 
                     if !live { offlineNote }
 
-                    if !mine.isEmpty {
+                    if !sortedRules.isEmpty {
                         VStack(spacing: 14) {
-                            ForEach(mine) { r in card(r).transition(.opacity.combined(with: .scale(scale: 0.97))) }
-                        }
-                    }
-                    if !basics.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            SectionTitle(text: "Always on")
-                            ForEach(basics) { r in card(r) }
+                            ForEach(sortedRules) { r in card(r).transition(.opacity.combined(with: .scale(scale: 0.97))) }
                         }
                     }
                     if !suggested.isEmpty {

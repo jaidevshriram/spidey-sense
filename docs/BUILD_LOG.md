@@ -530,3 +530,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - Fix: NeonSource yields the newest frame at least every 0.25 s even while lagging (staleness gates still use capture time). 60 s check: 0 gaps > 1.5 s (max 1.1 s).
 - Live view now 1280 px @ JPEG 85 (was 640 @ 70); `trace.live_max_side` / `trace.live_quality`.
 - New engine command `{"type":"command","name":"haiku","args":{"on":false}}` and env `HAIKU_OFF=1` (frames, gaze, live view keep running; no API calls). /live now says "no video from the glasses (Wi-Fi stalled)" / "video delayed" instead of "engine not writing".
+
+## 2026-10-10 20:35 · Spidey triggers list sorting
+- One list, no "Always on" heading: active triggers first, then off; your own before built-ins within each group; toggling animates the row into place. Suggested templates stay at the bottom.
