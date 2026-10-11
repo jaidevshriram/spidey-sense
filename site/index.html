@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spidey Sense</title>
+<meta name="description" content="A sixth sense you wear: eye-tracking glasses, Claude Haiku and a haptic Dot that taps you about what you have not looked at.">
+<link rel="icon" href="assets/app-icon.png">
+<style>
+:root{--bg:#f9f8f7;--card:#fff;--ink:#1b1b1d;--muted:#6b6b70;--line:#ebe9e6;--coral:#ff4f5e;--coral-soft:#ffe9eb;--amber:#ffb020}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 Arial,-apple-system,"Segoe UI",Helvetica,sans-serif}
+img{max-width:100%;display:block}
+a{color:var(--coral)}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+nav{position:sticky;top:0;z-index:5;background:rgba(249,248,247,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:18px;height:56px;overflow-x:auto;white-space:nowrap}
+nav b{display:flex;align-items:center;gap:8px;margin-right:auto}
+nav b img{width:28px;height:28px;border-radius:7px}
+nav a{color:var(--ink);text-decoration:none;font-size:15px}
+nav a:hover{color:var(--coral)}
+.hero{padding:28px 0 8px}
+.hero img{border-radius:22px;box-shadow:0 10px 40px rgba(255,79,94,.18)}
+h1{font-size:40px;line-height:1.1;margin:28px 0 10px}
+h2{font-size:30px;line-height:1.15;margin:0 0 6px}
+h3{font-size:20px;margin:0 0 8px}
+.lead{font-size:20px;max-width:760px;margin:0 0 16px}
+.kicker{color:var(--coral);font-weight:bold;text-transform:uppercase;letter-spacing:.08em;font-size:13px;margin:0 0 6px}
+.sub{color:var(--muted);max-width:760px;margin:0 0 22px}
+section{padding:56px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.pill{display:inline-block;background:var(--coral-soft);color:var(--coral);border-radius:999px;padding:3px 12px;font-size:13px;font-weight:bold}
+.btn{display:inline-block;background:var(--coral);color:#fff;text-decoration:none;border-radius:999px;padding:11px 22px;font-weight:bold}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 6px}
+.figure{padding:10px}
+.figure img{border-radius:14px}
+.cap{color:var(--muted);font-size:14px;margin:10px 4px 2px}
+.story p{margin:0 0 10px}
+.story .buzz{display:flex;align-items:center;gap:10px;font-weight:bold}
+.dot{width:16px;height:16px;border-radius:50%;flex:none}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;counter-reset:s}
+.flow .card{padding:16px}
+.flow .card::before{counter-increment:s;content:counter(s);display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--coral);color:#fff;font-weight:bold;font-size:14px;margin-bottom:8px}
+.flow p{margin:0;font-size:15px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td,th{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+td:last-child{white-space:nowrap;font-weight:bold}
+.tablecard{padding:8px 14px;overflow-x:auto}
+ul.clean{margin:0;padding-left:20px}
+ul.clean li{margin:0 0 8px}
+.ok h3::before{content:"\2713  ";color:#1a9e5a}
+.no h3::before{content:"!  ";color:var(--coral)}
+.shots{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.shot{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:10px;margin:0}
+.shot img{border-radius:12px;width:100%;aspect-ratio:1179/2556;object-fit:cover;background:var(--bg)}
+.shot figcaption{font-size:14px;font-weight:bold;margin:9px 4px 2px}
+.shot figcaption span{display:block;font-weight:normal;color:var(--muted);font-size:13px}
+pre{background:#1b1b1d;color:#f3f2f0;border-radius:14px;padding:16px;overflow-x:auto;font-size:13.5px;line-height:1.5;margin:10px 0 0}
+code{font-family:ui-monospace,Menlo,Consolas,monospace}
+p code,li code{background:#f1efec;border-radius:5px;padding:1px 5px;font-size:14px}
+footer{margin:64px 0 0;padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+@media (max-width:860px){.g3,.flow{grid-template-columns:1fr 1fr}.shots{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:600px){h1{font-size:30px}h2{font-size:25px}.lead{font-size:18px}.g2,.g3,.flow{grid-template-columns:1fr}.shots{grid-template-columns:1fr 1fr;gap:10px}section{padding:40px 0 4px}nav .wrap a.hide-s{display:none}}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <b><img src="assets/app-icon.png" alt="">Spidey Sense</b>
+  <a href="#what">What</a><a href="#how">How</a><a class="hide-s" href="#limits">Limits</a><a href="#app">App</a><a href="#run">Run it</a>
+</div></nav>
+
+<header class="wrap hero">
+  <img src="assets/hero.jpg" alt="Spidey Sense: a sixth sense for what you missed." width="1600" height="900">
+  <h1>A sixth sense you wear.</h1>
+  <p class="lead">Eye-tracking glasses see what is around you and where you are looking. Claude notices what matters that <b>you have not looked at yet</b>. A small haptic Dot on your wrist buzzes, and your phone says why. If you already saw it, Spidey stays quiet.</p>
+  <p class="sub">Built at the INTERFACE hackathon, October 2026.</p>
+  <div class="btns"><a class="btn" href="#demo">See a real moment</a><a class="btn ghost" href="https://github.com/jaidevshriram/spidey-sense">Code on GitHub</a></div>
+</header>
+
+<section id="demo" class="wrap">
+  <p class="kicker">A real moment</p>
+  <h2>Reading my phone. Box on the floor. Buzz.</h2>
+  <p class="sub">From a test walk, not a simulation.</p>
+  <div class="card figure">
+    <img src="assets/demo-screen.jpg" alt="Demo screen: the glasses' view with the gaze ring on the phone, Haiku's box around a cardboard box, and the buzz banner; next to it the live-mirrored phone app" loading="lazy">
+    <p class="cap">My gaze (coral ring) is on the phone. Haiku boxes the cardboard box ahead. The Dot buzzes 1.7 s after the frame ("Something in my way", amber). Left: the demo screen's glasses view. Right: the app, mirrored live, showing that run's real buzzes.</p>
+  </div>
+</section>
+
+<section id="what" class="wrap">
+  <p class="kicker">1 · What it is</p>
+  <h2>Cars got super-sensors. Now people get one.</h2>
+  <p class="sub">Self-driving cars see in every direction and never get distracted. People do not. We look at our phones, we focus on one thing, and we miss the box on the floor or the hand coming toward us. Spidey Sense adds one sense. It does not take over or decide for you. It keeps you in the loop and makes you a little more aware.</p>
+
+  <div class="grid g3">
+    <div class="card"><h3>Pupil Labs Neon</h3><p>Eye-tracking glasses. A scene camera plus eye cameras that measure where you look. They plug into an Android "Companion" phone, which streams video and gaze to a Mac over Wi-Fi.</p></div>
+    <div class="card"><h3>DataFeel Dot</h3><p>A coin-sized haptic device. It can vibrate, glow in any colour, and warm or cool. Dots chain to a hub called El Jefe. The Mac drives it over Bluetooth.</p></div>
+    <div class="card"><h3>Mac + iPhone</h3><p>The Mac runs the engine and calls Claude Haiku. The iPhone app shows and speaks why it buzzed, and lets you add triggers by talking. Optional: Oura ring heart rate via the cloud.</p></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card story">
+      <span class="pill">How it feels</span>
+      <p style="margin-top:12px">You walk across a room reading a message. There is a box on the floor ahead. You have not looked at it.</p>
+      <p class="buzz"><span class="dot" style="background:var(--amber)"></span>About a second and a half later, the Dot buzzes amber.</p>
+      <p>Spidey's voice in your AirPods says why. You look up and step around it. The app logs it with the picture the glasses saw.</p>
+      <p><b>Now glance at the box first.</b> Nothing happens. You already know it is there.</p>
+    </div>
+    <div class="card story">
+      <span class="pill">Your own triggers</span>
+      <p style="margin-top:12px">Hold the talk button and say <i>"warn me if a dog comes near me"</i>. Spidey drafts the trigger, you confirm it, and it is live.</p>
+      <p>Each trigger is a sentence plus a rule:</p>
+      <ul class="clean">
+        <li><b>What:</b> "something in my way", "someone about to attack me", "a lion I haven't noticed".</li>
+        <li><b>When:</b> only if you haven't noticed it, when you look at it, or always.</li>
+        <li><b>Feel:</b> vibration pattern, Dot colour, urgency.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="wrap">
+  <p class="kicker">2 · How it works</p>
+  <h2>From sight to touch in about a second.</h2>
+  <p class="sub">One Claude Haiku call per frame does all the looking. Your real gaze, not the model's guess, decides whether you noticed.</p>
+  <div class="flow">
+    <div class="card"><h3>See</h3><p>Neon streams the scene and your gaze point to the Mac over the phone's 5 GHz hotspot (~90 ms).</p></div>
+    <div class="card"><h3>Ask</h3><p>Every 0.25 s the newest frame, with the gaze dot drawn on it, goes to Claude Haiku. Up to 5 calls overlap.</p></div>
+    <div class="card"><h3>Judge</h3><p>One call checks the hazard check and every trigger. Each match gets a box, an urgency and a reason.</p></div>
+    <div class="card"><h3>Noticed?</h3><p>Did your gaze rest on that box (about 0.2 s)? A glance does not count. A gaze cache re-checks every frame.</p></div>
+    <div class="card"><h3>Tap</h3><p>If not noticed: the Dot buzzes over Bluetooth (117 ms), and the app speaks and logs why.</p></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card tablecard">
+      <table>
+        <tr><th>Measured</th><th>Time</th></tr>
+        <tr><td>Glasses capture → Mac (5 GHz hotspot)</td><td>~90 ms median</td></tr>
+        <tr><td>Haiku, frame → cue (test scenes)</td><td>0.92 s median</td></tr>
+        <tr><td>Glasses capture → cue, real Neon + Haiku</td><td>1.6 s median</td></tr>
+        <tr><td>Gaze lands → buzz (cached boxes, world sim)</td><td>0.24 s</td></tr>
+        <tr><td>Dot trigger over Bluetooth</td><td>117 ms median</td></tr>
+        <tr><td>Spidey's voice (ElevenLabs TTS)</td><td>0.3–0.8 s</td></tr>
+        <tr><td>Live punch test: fist toward the face → buzz</td><td>~0.96 s</td></tr>
+      </table>
+    </div>
+    <div class="card tablecard">
+      <table>
+        <tr><th>Accuracy checks</th><th>Result</th></tr>
+        <tr><td>Obstacle trigger, 56 hand-labelled live frames</td><td>96 % recall</td></tr>
+        <tr><td>Same, false alarms</td><td>19 %</td></tr>
+        <tr><td>Attack trigger, reworded, replay of missed frames</td><td>0/14 → 14/14</td></tr>
+        <tr><td>Attack trigger, calm frames</td><td>0/8 false alarms</td></tr>
+        <tr><td>World-sim scenarios A–D, 3 reps, real Haiku</td><td>all pass, 0 false alarms</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Architecture</h3>
+<pre><code> WORN ON YOU                         ON THE TABLE (MacBook)                     YOUR PHONE
+ Pupil Labs Neon ─USB-C─ Companion ─Wi-Fi─▶ source (video, gaze)
+                         phone (5 GHz)       │
+                                             ▼
+                                   detector: ONE Claude Haiku call
+                                   (hazard + every trigger: match, urgency, box, reason)
+                                             ▼
+                                   gaze cache + memory + rules
+                                   (noticed? time to contact? stale?)
+ Oura ring ─▶ Oura cloud ───────────▶ heart rate
+                                             ▼
+ DataFeel Dot ◀─ El Jefe ◀─ Bluetooth LE ── sink ──▶ voice (ElevenLabs TTS)
+                                             └── WebSocket :8765 ◀────────▶ iOS app
+                                                 events, triggers, voice drafts, screen mirror</code></pre>
+    <p class="cap">Every stage is swappable in <code>backend/configs/*.yaml</code> (fake or real source, detector and sink). Every Haiku call is traced: the exact images, prompt, reply, timings, and why each trigger did or did not fire.</p>
+  </div>
+</section>
+
+<section id="limits" class="wrap">
+  <p class="kicker">Honest status</p>
+  <h2>What works today, and what does not.</h2>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card ok"><h3>Works, tested live</h3>
+      <ul class="clean">
+        <li>Neon glasses → Mac over the Companion phone's hotspot.</li>
+        <li>Claude Haiku on live frames, with gaze-aware triggers: silent when you looked, buzz when you did not.</li>
+        <li>DataFeel Dot over Bluetooth: vibration patterns, a colour per trigger.</li>
+        <li>iOS app: event log with reasons and pictures, Spidey's voice, hold-to-talk triggers, step-by-step wizard.</li>
+        <li>Demo screen on the Mac with the app mirrored live.</li>
+      </ul>
+    </div>
+    <div class="card no"><h3>Limits</h3>
+      <ul class="clean">
+        <li><b>Walking detection does not work today.</b> The code exists, but the Neon IMU stream arrives as all zeros with our Companion app version. Walking shows as "unknown" and never blocks a trigger.</li>
+        <li><b>The glasses microphone does not work today.</b> The hearing code is built but gets no audio.</li>
+        <li><b>Oura heart rate is only as fresh as the last sync.</b> Readings older than 15 min never buzz.</li>
+        <li>Radar is paused. Bluetooth must run from Terminal.app on the Mac.</li>
+        <li>No absolute distances: over-time triggers use relative signals (closer, farther, looming).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="app" class="wrap">
+  <p class="kicker">3 · The app</p>
+  <h2>What buzzed, and why.</h2>
+  <p class="sub">A light, card-based iOS app. Screens below come from the simulator; most show sample data, and "Home, live" shows the real buzzes from a test walk.</p>
+  <div class="shots">
+    <figure class="shot"><img loading="lazy" src="assets/home-real-events.jpg" alt=""><figcaption>Home, live<span>Real buzzes from a walk</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/home-fresh-event.jpg" alt=""><figcaption>Spidey sense tingled<span>Fresh buzz, text first</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/home-collapsed-x3.jpg" alt=""><figcaption>Repeats collapse<span>"Buzzed 3 times"</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/home-photo-expanded.jpg" alt=""><figcaption>What the glasses saw<span>Gaze dot + Haiku's box</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/event-detail.jpg" alt=""><figcaption>Why it buzzed<span>Snapshots and reason</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/event-detail-live.jpg" alt=""><figcaption>Event detail<span>Snapshot sequence</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/home-earlier-list.jpg" alt=""><figcaption>Earlier<span>Older buzzes in a list</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/home-empty.jpg" alt=""><figcaption>All quiet<span>Nothing needs you</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/home-heart.jpg" alt=""><figcaption>Oura on Home<span>Shown only with a real reading</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/talk-button.jpg" alt=""><figcaption>Talk to Spidey<span>Hold to tell it what to watch</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/voice-draft-sheet.jpg" alt=""><figcaption>Spidey heard you<span>Drafted trigger, you confirm</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/triggers.jpg" alt=""><figcaption>Spidey triggers<span>On/off per trigger</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-1-what.jpg" alt=""><figcaption>New trigger: what<span>Tiles or your own words</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-2-when.jpg" alt=""><figcaption>When to warn you<span>Only if you haven't noticed</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-walking.jpg" alt=""><figcaption>Only while walking<span>Built; IMU sends zeros today</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-3-wait.jpg" alt=""><figcaption>Wait to be sure?<span>Over-time triggers</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-4-feel-skip.jpg" alt=""><figcaption>How it should feel<span>Recommended feel</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/wizard-4-feel-customize.jpg" alt=""><figcaption>Customize the feel<span>"Try it" plays on the Dot</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/summary.jpg" alt=""><figcaption>Summary<span>One plain sentence</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/summary-advanced.jpg" alt=""><figcaption>Advanced<span>Urgency, cooldown, which Dot</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/success.jpg" alt=""><figcaption>Spidey Sense improved!<span>Trigger is live</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/edit-alert.jpg" alt=""><figcaption>Edit a trigger<span>Change any step</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/voice-settings.jpg" alt=""><figcaption>Spidey's voice<span>Every buzz / urgent / off</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/settings-developer.jpg" alt=""><figcaption>Settings<span>Strength, quiet mode, stop all</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/debug.jpg" alt=""><figcaption>Debug<span>Devices, haptics, engine</span></figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="assets/debug-live-decisions.jpg" alt=""><figcaption>Live decisions<span>Every call, near misses</span></figcaption></figure>
+  </div>
+</section>
+
+<section id="run" class="wrap">
+  <p class="kicker">4 · Run it</p>
+  <h2>Try it on a Mac.</h2>
+  <p class="sub">Fakes need nothing but Python. Haiku needs an Anthropic key (kept in a gitignored <code>.env</code>). The Dot needs Bluetooth from Terminal.app. Full details are in the README.</p>
+  <div class="grid g2">
+    <div class="card"><h3>Engine</h3>
+<pre><code>./scripts/setup.sh          # venv + installs
+source .venv/bin/activate
+./scripts/set_api_key.sh    # Anthropic key → .env
+
+# fakes only, prints cues
+python3 backend/run.py --seconds 10
+# Haiku on test scenes
+python3 backend/run.py \
+  --config backend/configs/config.vlm.yaml --seconds 21</code></pre></div>
+    <div class="card"><h3>Glasses + Dot (Terminal.app)</h3>
+<pre><code>./scripts/ble_test.sh       # Dot flashes green
+./scripts/neon_check.sh     # Neon fps / delay
+python3 backend/run.py \
+  --config backend/configs/config.neon.yaml \
+  --sink datafeel-ble       # real glasses + buzz
+
+./scripts/traces.sh         # viewer on :8096
+# demo screen: http://localhost:8096/demo</code></pre></div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>iPhone app</h3>
+    <p style="margin:0">Open <code>ios/SpideySense/SpideySense.xcodeproj</code> and press Run. The app finds the engine on the same Wi-Fi by itself (Bonjour). For the demo: Settings → Demo → Mirror screen to Mac.</p>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <p><b>Spidey Sense</b> · INTERFACE hackathon, October 2026 · <a href="https://github.com/jaidevshriram/spidey-sense">GitHub</a></p>
+  <p>Built with Pupil Labs Neon and its Real-time API, DataFeel Dots (devkit SDK, MIT), Claude Haiku 5.5 (Anthropic), ElevenLabs text-to-speech and speech-to-text, the Oura API v2, and Plus Jakarta Sans in the app. Desk test images from Wikimedia Commons; full credits in the README.</p>
+</div></footer>
+</body>
+</html>
