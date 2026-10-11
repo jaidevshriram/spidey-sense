@@ -449,6 +449,7 @@ async function tick(){
     $("ov").innerHTML=s;
     const mo=st.motion||{};
     pill("pgaze",!!st.gaze,st.gaze?"Gaze tracked":(st.worn===false?"Glasses off":"No gaze"),!st.gaze);
+    $("pwalk").style.display=mo.walking==null?"none":"";   // no IMU data: hide instead of showing "–"
     pill("pwalk",!!mo.walking,mo.walking==null?"Motion –":mo.walking?`Walking${mo.cadence_spm?" · "+mo.cadence_spm+" steps/min":""}`:(mo.turning?"Turning head":"Still"));
     pill("pear",!!st.listening,st.listening?"Hearing":"Not listening");
     const h=st.heart; let ht="Heart –";
