@@ -437,3 +437,14 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - The Dot's "blue" = its own idle breathe mode. New baseline (LED off, vibration stopped): on engine start, ~1.5 s after every
   cue/ping/test pattern (thermal holds untouched), and via `command reset_dot` / `haptic.reset` (also turns thermal off).
   App: "Reset Dot" on the Haptics tab + the El Jefe card. Installed on Riptide.
+
+### 19:12 Simulated desk runs with the raw LLM inputs (`tools/llm_capture.py`)
+- `python3 tools/llm_capture.py backend/configs/config.desk.sim.yaml --seconds 30 --enable big_cat_look lion_unnoticed`
+  wraps the Anthropic client and saves every request (the exact JPEG(s) sent with the gaze dot, user text, system prompt) and
+  Haiku's raw reply, then builds `logs/llm_inputs/<run>/index.html`. Console sink, no server.
+- Pictures (30 s, 62 calls): A/B fired correctly, but at 13.1 s big_cat_look fired from a tiger frame after the dog was up
+  (the staleness bug, also seen live) → the max_result_age_s gate is being added. Haiku's boxes are coarse
+  (call 1: lion box x 0.36–0.66 vs the actual ~0.62–0.84), so the gaze-in-box check is generous.
+- Lake (25 s, 38 calls): **false positive.** person_to_water(+unwatched) fired at 5.1 s while Haiku said `ordinal: "farther"`
+  ("moving away from the water's edge"); the gap was near (0.45 bh) and noisy boxes passed the shrink test → a veto on
+  latest "farther" / growing gap is being added. A correct fire at 10.5 s ("walks toward the lake edge, closer than earlier frames").
