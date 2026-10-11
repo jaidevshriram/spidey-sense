@@ -272,3 +272,8 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   (the fake detector never fires, so only the app triggers the Dot). The default config buzzed the real Dot once at 3 s; that's why manual mode exists.
 - App Haptics tab, Link check (simulator → Mac → BLE → Dot): Phone→Mac 3.6 ms; Mac→El Jefe BLE · DataFeelCE ·
   RSSI −40 dBm · register read 143 ms; El Jefe→Dot 1/1 answering (address 3). Ping all flashed the Dot.
+
+### 17:51 Milestone: app → Mac → Bluetooth → Dot works end to end (Jaidev confirmed)
+- Jaidev drove the real Dot from the iOS app (simulator) through the engine over BLE: "it worked!"
+- Working wirelessly now: app ↔ Mac (WebSocket, zero-config), Mac ↔ El Jefe (BLE, ~60–145 ms reads, ~117 ms to buzz),
+  Haiku vision on test scenes (~0.9 s/call). Next: real Neon via the Companion phone, Haiku on real clips, demo story.
