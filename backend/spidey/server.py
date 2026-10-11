@@ -16,6 +16,7 @@ import asyncio
 import json
 import socket
 import threading
+import time
 import traceback
 from collections import deque
 from typing import Callable
@@ -34,21 +35,47 @@ def lan_ip() -> str:
 
 
 def advertise_bonjour(port: int):
-    """Announce the WebSocket as _spidey._tcp so the iPhone app finds the Mac with zero setup."""
+    """Announce the WebSocket as _spidey._tcp so the iPhone app finds the Mac with zero setup.
+    Re-announces when the Mac's IP changes (e.g. joining a phone hotspot)."""
     try:
         from zeroconf import ServiceInfo, Zeroconf
-        host = socket.gethostname().split(".")[0]
-        ip = lan_ip()
-        info = ServiceInfo("_spidey._tcp.local.", f"Spidey Sense on {host}._spidey._tcp.local.",
+    except ImportError as e:
+        print(f"Bonjour: not advertised ({e}); the app can still use a manual URL")
+        return None
+    host = socket.gethostname().split(".")[0]
+
+    def info_for(ip):
+        return ServiceInfo("_spidey._tcp.local.", f"Spidey Sense on {host}._spidey._tcp.local.",
                            addresses=[socket.inet_aton(ip)], port=port,
                            properties={"path": "/", "v": "1"}, server=f"{host}.local.")
-        zc = Zeroconf()
-        zc.register_service(info, allow_name_change=True)
-        print(f"Bonjour: advertising _spidey._tcp on {ip}:{port}")
-        return zc
-    except Exception as e:  # discovery is a convenience; never block the engine
-        print(f"Bonjour: not advertised ({type(e).__name__}: {e}); the app can still use a manual URL")
-        return None
+
+    state = {"ip": lan_ip(), "zc": None, "info": None}
+
+    def register():
+        try:
+            if state["zc"]:
+                state["zc"].unregister_all_services()
+                state["zc"].close()
+            zc = Zeroconf()   # binds to the current interfaces
+            info = info_for(state["ip"])
+            zc.register_service(info, allow_name_change=True)
+            state.update(zc=zc, info=info)
+            print(f"Bonjour: advertising _spidey._tcp on {state['ip']}:{port}", flush=True)
+        except Exception as e:  # discovery is a convenience; never break the engine
+            print(f"Bonjour: not advertised ({type(e).__name__}: {e})", flush=True)
+
+    def watch():
+        while True:
+            time.sleep(5)
+            ip = lan_ip()
+            if ip != state["ip"]:
+                print(f"Bonjour: network changed {state['ip']} -> {ip}, re-announcing", flush=True)
+                state["ip"] = ip
+                register()
+
+    register()
+    threading.Thread(target=watch, daemon=True).start()
+    return state
 
 
 class EventServer:
