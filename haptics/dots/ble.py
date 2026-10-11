@@ -28,6 +28,7 @@ class BleSerial:
     def __init__(self, address: str | None = None, name_hint: str | None = None,
                  scan_timeout: float = 10.0, timeout: float = 0.5):
         self.port = PORT
+        self.rssi: int | None = None      # signal strength seen in the scan (dBm)
         self.timeout = timeout
         self.baudrate, self.bytesize, self.parity, self.stopbits = 115200, 8, "N", 1
         self._buf = bytearray()
@@ -49,7 +50,10 @@ class BleSerial:
             def match(d, adv):
                 name = (d.name or adv.local_name or "").lower()
                 if name_hint:  # exact name: several El Jefes can be in range at an event
-                    return name == name_hint.lower()
+                    if name == name_hint.lower():
+                        self.rssi = adv.rssi
+                        return True
+                    return False
                 return NUS_SERVICE in [u.lower() for u in adv.service_uuids] or \
                     any(k in name for k in ("datafeel", "jefe"))
             dev = await BleakScanner.find_device_by_filter(match, timeout=scan_timeout)

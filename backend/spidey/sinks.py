@@ -1,26 +1,34 @@
 """Where haptic cues go: console, DataFeel dots, or (later) the phone."""
 from __future__ import annotations
 
-import sys
 import time
-from pathlib import Path
 
 
 class HapticSink:
+    """play() is what the engine rules call. `control` (a HapticControl) is what the app's Haptics tab
+    and link check use: real dots for DataFeel sinks, mock dots for the console sink."""
+    control = None
+
     def play(self, pattern: str, dot: int | None = None) -> None:
         raise NotImplementedError
 
     def close(self) -> None:
-        pass
+        if self.control:
+            self.control.close()
 
 
 class ConsoleSink(HapticSink):
+    def __init__(self):
+        from .haptic_control import HapticControl
+        self.control = HapticControl.mocked()   # lets the app's Haptics tab work without hardware
+
     def play(self, pattern, dot=None):
-        print(f"  >>> HAPTIC {pattern} on {'all dots' if dot is None else f'dot {dot}'}", flush=True)
+        print(f"  >>> HAPTIC {pattern} on {'all dots' if dot is None else f'dot {dot}'}"
+              f" (intensity {self.control.intensity:.2f})", flush=True)
 
 
 class DataFeelSink(HapticSink):
-    """Real dots via spidey_haptics. Connects once, cools down per pattern.
+    """Real dots. Connects once, cools down per pattern, scales by the app's master intensity.
 
     transport="serial": El Jefe on USB.  transport="ble": El Jefe over Bluetooth (no cable;
     run from Terminal so macOS grants Bluetooth). ble_address / ble_name pick a specific El Jefe.
@@ -29,21 +37,20 @@ class DataFeelSink(HapticSink):
     def __init__(self, cooldown_s: float = 2.0, transport: str = "serial",
                  ble_address: str | None = None, ble_name: str | None = "DataFeelCE"):
         import spidey_haptics as sh   # haptics/ (pip install -e haptics)
+        from .haptic_control import HapticControl
 
         self.sh = sh
-        self._link = None
+        link, rssi = None, None
         if transport == "ble":
             from dots.ble import discover_ble_dots
-            self._link, self.dots = discover_ble_dots(sh.MAX_DOTS, ble_address, ble_name)
-            if not self.dots:
+            link, dots = discover_ble_dots(sh.MAX_DOTS, ble_address, ble_name)
+            if not dots:
                 raise RuntimeError("Connected to El Jefe over Bluetooth but no dots answered")
+            rssi, name = link.rssi, ble_name or "El Jefe (BLE)"
         else:
-            self.dots = sh.connect()
-            # ble_* settings only apply to Bluetooth
-        from dots import fastfire
-
-        self.ff = fastfire
-        fastfire.prepare(self.dots)   # 2 writes per buzz instead of 6 (~117 ms over BLE vs 361)
+            dots, name = sh.connect(), "El Jefe (USB)"   # ble_* settings only apply to Bluetooth
+        self.dots = dots
+        self.control = HapticControl(dots, "ble" if transport == "ble" else "usb", name, link=link, rssi=rssi)
         self.cooldown_s = cooldown_s
         self._last: dict[str, float] = {}
 
@@ -53,12 +60,9 @@ class DataFeelSink(HapticSink):
             return
         self._last[pattern] = now
         seq, rgb = self.sh.PATTERNS[pattern]
-        self.ff.fire(self.dots, seq, rgb, None if dot is None else [dot - 1])
-
-    def close(self):
-        self.sh.reset(self.dots)
-        if self._link:
-            self._link.shutdown()
+        r = self.control.play_pattern(pattern, seq, rgb, None if dot is None else dot - 1)
+        if not r["ok"]:
+            print(f"  !!! haptic {pattern} failed: {r['error']}", flush=True)
 
 
 class PhoneSink(HapticSink):

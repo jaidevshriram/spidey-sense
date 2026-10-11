@@ -78,3 +78,36 @@ for `fake`, `disconnected` if no frame for 3 s), `oura` (always `coming_soon`). 
 - `rules.json` (project root): `{"rules": [rule, ...]}`. Loaded at startup if present, else `config.yaml` `rules:`.
   Delete it to go back to config.yaml. Override the path with `rules_file:` in the config.
 - `logs/feedback.jsonl`: one line per verdict. Override with `feedback_log:`.
+
+## Haptics tab + link check (added 17:35)
+
+The engine owns the single El Jefe link (`sink.control`, a `HapticControl`). With the console sink, these
+messages drive **mock dots**, so the tab works in the simulator. Don't run the web playground at the same time
+as an engine using a DataFeel sink: only one process can hold the BLE link.
+
+### App -> server (each gets `{"type":"ack","for":<type>,"ok":bool,"ms":<device ms>,"error"?:...}`)
+
+| type | fields | notes |
+|---|---|---|
+| `haptic.subscribe` | `on: bool` | send every ~2 s while the tab is visible; the server streams telemetry at 2 Hz. If the app stops sending for 5 s, thermal turns off |
+| `haptic.led` | `mode: off\|global\|individual\|breathe\|track_thermal`, `rgb: [r,g,b]`, `index?: 0-7`, `leds?: [[r,g,b] x8]` | `index` sets one LED (individual mode) |
+| `haptic.vibe.sequence` | `steps: [waveform name \| rest seconds (0-1.27)]` (max 8) | names = DataFeel `VibrationWaveforms` |
+| `haptic.vibe.manual` | `hz: 50-300`, `intensity: 0-1`, `on: bool` | scaled by master intensity |
+| `haptic.preset` | `name: urgent\|pulse\|ambient` | scaled by master intensity |
+| `haptic.thermal` | `on: bool`, `intensity?: -1..1` **or** `target_c?: number` | target capped at 40 °C (`capped: true` in ack); auto-off after 30 s; off if skin > 41 °C |
+| `haptic.stop_all` | – | vibration, thermal, LEDs off |
+| `link.ping` | `id`, `t_app` (unix s), `flash: bool` | reply `link.pong` (below); `flash` = Dot green 0.5 s |
+| `command` `set_intensity` | `args.value: 0-1` | master intensity, **applied to hardware**: waveforms swap to weaker variants (e.g. BUZZ1_P100 → BUZZ3_P60); 0 = light only |
+
+### Server -> app
+
+- `haptic.telemetry` (2 Hz while subscribed): `{ts, skin_c, sink_c, thermal_power, last_cmd_ms, intensity,
+  thermal: null | {mode, value, base_c, reached: {"+2C": s, "+4C": s, "target": s}, elapsed_s, remaining_s, rate_c_per_s},
+  limits: {target_cap_c, skin_cutoff_c, thermal_max_s}}`
+- `link.pong`: `{id, t_app, mac_ms, ble_ms, flash_ms, link}`. App RTT = now − t_app. Per hop: app↔Mac = RTT − mac_ms;
+  Mac↔El Jefe↔Dot = ble_ms (a register read on every dot).
+- `link` object (also in `device.status` → `el_jefe.link`): `{transport: ble|usb|mock, device, rssi (dBm at connect, or null),
+  ok, ms (register-read round trip), last_seen, dots: [answering addresses], addresses: [expected], link_up, reason}`.
+  `reason` is a human sentence, e.g. "BLE: link to DataFeelCE is down. Is El Jefe on and in range?"
+- `system`: `{ts, level: info|warning|error, text}` for link lost/restored, thermal safety cut-offs. Show in the Log as system rows.
+- The El Jefe card in `device.status` is now real: `status` connected/disconnected from a register read every 2 s.

@@ -51,7 +51,8 @@ class Controller:
         self.lock = threading.RLock()        # guards rules + settings (socket thread vs engine loop)
         self.sink_lock = threading.Lock()    # one sink call at a time
         self.quiet = False
-        self.intensity = 1.0                 # TODO: not applied to hardware yet (stored + broadcast only)
+        self.intensity = 1.0                 # master intensity, applied via sink.control
+        self.haptics = getattr(sink, "control", None)   # HapticControl (real or mock dots)
         self.last_frame_ts: float | None = None
         self.last_play_ts: float | None = None
         self.server: EventServer | None = None
@@ -93,12 +94,14 @@ class Controller:
         sink_cfg = self.cfg.get("sink", {}) or {}
         sink_type = sink_cfg.get("type", "console")
         transport = {"datafeel": "usb", "datafeel-ble": "ble"}.get(sink_type, sink_type)
+        link = self.haptics.link_info() if self.haptics else {}
         if sink_type.startswith("datafeel"):
-            jefe_status = "connected"
-            jefe_detail = f"{sink_type} via the Mac ({transport})"
+            jefe_status = {True: "connected", False: "disconnected"}.get(link.get("ok"), "connecting")
+            jefe_detail = (f"{transport.upper()} · dots {link.get('dots')} · read {link.get('ms')} ms"
+                           if link.get("ok") else link.get("reason", ""))
         else:
             jefe_status = "simulated"
-            jefe_detail = f"{sink_type} sink (no hardware)"
+            jefe_detail = f"{sink_type} sink (mock dots)"
         neon_status = "connected" if self.source_type == "neon" else "simulated"
         if self.source_type == "neon" and (self.last_frame_ts is None or now - self.last_frame_ts > 3):
             neon_status = "disconnected"
@@ -108,7 +111,8 @@ class Controller:
              "detail": f"{n} app(s) connected", "last_seen": now},
             {"id": "el_jefe", "name": sink_cfg.get("ble_name", "DataFeelCE"), "kind": "haptics",
              "status": jefe_status, "detail": jefe_detail, "transport": transport,
-             "sink": sink_type, "last_seen": self.last_play_ts},
+             "sink": sink_type, "last_seen": link.get("last_seen") or self.last_play_ts,
+             "link": link},
             {"id": "neon", "name": "Neon", "kind": "eye_tracker", "status": neon_status,
              "detail": f"source: {self.source_type}" + (
                  f" ({(self.cfg.get('source') or {}).get('mode', 'capture')})" if self.source_type == "neon" else ""),
@@ -190,21 +194,13 @@ class Controller:
             self.last_play_ts = time.time()
             ack["detail"] = f"played {pattern}"
         elif name == "stop_all":
-            with self.sink_lock:
-                if hasattr(self.sink, "stop"):
-                    self.sink.stop()
-                    ack["detail"] = "sink.stop()"
-                elif hasattr(self.sink, "sh") and hasattr(self.sink, "dots"):
-                    self.sink.sh.reset(self.sink.dots)   # DataFeel: stop vibration + LEDs, keep the link
-                    ack["detail"] = "dots reset"
-                else:
-                    # STUB: the console sink has nothing to stop.
-                    print("  >>> STOP ALL (stub: sink has no stop)", flush=True)
-                    ack["detail"] = "stub: sink has no stop"
+            r = self.haptics.stop_all("stop_all") if self.haptics else {"ok": True}
+            ack.update(ok=r["ok"], detail="vibration, thermal and LEDs off", ms=r.get("ms"))
         elif name == "set_intensity":
-            # TODO: apply to hardware (scale DataFeel vibration amplitude). Stored + broadcast only.
             self.intensity = max(0.0, min(1.0, float(args.get("value", 1.0))))
-            ack["detail"] = f"intensity {self.intensity:.2f} (stored; not applied to hardware yet)"
+            if self.haptics:
+                self.haptics.intensity = self.intensity   # scales every pattern from now on
+            ack["detail"] = f"intensity {self.intensity:.2f}"
             if self.server:
                 self.server.broadcast(self.settings_msg())
         elif name == "quiet":
@@ -225,6 +221,54 @@ class Controller:
         server.on("feedback", self.on_feedback)
         server.on("command", self.on_command)
         server.add_periodic(5.0, self.device_status)
+        if self.haptics:
+            for kind in ("haptic.led", "haptic.vibe.sequence", "haptic.vibe.manual", "haptic.preset",
+                         "haptic.thermal", "haptic.stop_all", "haptic.subscribe", "link.ping"):
+                server.on(kind, self.on_haptic)
+            self.haptics.on_telemetry = server.broadcast
+            self.haptics.on_system = self.system_event
+
+    # ---- Haptics tab + link check -------------------------------------------------------
+    def system_event(self, level: str, text: str) -> None:
+        """Link drops etc.; the app shows these in its Log as system rows."""
+        print(f"[system/{level}] {text}", flush=True)
+        if self.server:
+            self.server.broadcast({"type": "system", "ts": time.time(), "level": level, "text": text})
+
+    def on_haptic(self, msg: dict) -> dict:
+        h, kind = self.haptics, msg.get("type")
+        addr = msg.get("address")
+        if kind == "haptic.subscribe":            # app's Haptics tab is open; resend every ~2 s
+            h.last_subscribe = time.time() if msg.get("on", True) else 0.0
+            return {"type": "ack", "for": kind, "ok": True}
+        if kind == "link.ping":
+            t0 = time.perf_counter()
+            p = h.ping(flash=msg.get("flash", True))
+            return {"type": "link.pong", "id": msg.get("id"), "t_app": msg.get("t_app"),
+                    "mac_ms": round((time.perf_counter() - t0) * 1000, 1),
+                    "ble_ms": p["health"]["ms"], "flash_ms": p["flash_ms"], "link": h.link_info()}
+        if kind == "haptic.led":
+            r = h.led(msg.get("mode", "global"), tuple(msg.get("rgb") or (255, 255, 255)),
+                      msg.get("index"), msg.get("leds"), addr)
+        elif kind == "haptic.vibe.sequence":
+            r = h.sequence(msg.get("steps"), addr)
+        elif kind == "haptic.vibe.manual":
+            r = h.manual(msg.get("hz", 170), msg.get("intensity", 0.5), msg.get("on", True), addr)
+        elif kind == "haptic.preset":
+            import spidey_haptics as sh
+            name = msg.get("name")
+            if name not in sh.PATTERNS:
+                return {"type": "ack", "for": kind, "ok": False, "error": f"unknown preset {name!r}"}
+            seq, rgb = sh.PATTERNS[name]
+            r = h.play_pattern(name, seq, rgb)
+        elif kind == "haptic.thermal":
+            r = h.thermal_set(msg.get("on", True), msg.get("intensity"), msg.get("target_c"), addr)
+        elif kind == "haptic.stop_all":
+            r = h.stop_all("stop_all")
+        else:
+            return {"type": "ack", "for": kind, "ok": False, "error": "unknown haptic message"}
+        print(f"haptic: {kind} -> {'ok' if r.get('ok') else r.get('error')} {r.get('ms')} ms", flush=True)
+        return {"type": "ack", "for": kind, **r}
 
 
 def run(cfg: dict, duration_s: float | None = None) -> None:
