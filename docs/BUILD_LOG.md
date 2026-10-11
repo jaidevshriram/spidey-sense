@@ -201,3 +201,9 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 ### 17:24 README upkeep
 - Added `CLAUDE.md` (repo rule: update README.md + docs/BUILD_LOG.md in the same change) and a
   "Keeping this README current" section in the README, per Jaidev.
+
+### 17:18 Bluetooth test from the new repo
+- With the old playground stopped: `./scripts/ble_test.sh` (Terminal.app) connected to DataFeelCE (rssi −41),
+  found the Dot at address 3, LED green in 121 ms, skin 29.4 °C. **The monorepo's BLE path is verified on hardware.**
+- 5 DataFeel kits in range: CE (ours), 1E, 3A, 32, 36.
+- The old `~/Downloads/interface-hackathon` is kept as a backup (Jaidev: don't delete).
