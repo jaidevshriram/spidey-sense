@@ -21,6 +21,7 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 | Radar on radar-lab protocol v2 (debounced state, mount-aware `where`, 0.5 s fail-safe) | this push | approach → 1 fire; two_people walk-by ignored; ~4 ms server→sense |
 | App on Jaidev's iPhone ("Riptide") with a spider-web icon | this push | signed with his team; connects to the engine via Bonjour |
 | Haptic Playground (web) | | `./scripts/playground.sh` |
+| iOS consumer redesign: light theme, Home (fresh cards, repeats collapse to "Buzzed 3 times", photo on demand, Earlier list), Spidey triggers + 5-step wizard, Settings, Debug hub tab | uncommitted | builds for the simulator; checked on fakes + live world-sim engine (:8799); screenshots + `flow.mp4` in `docs/screenshots/redesign/` |
 | Per-call Haiku traces + viewer, app "Live decisions", staleness gate (2.5 s), decision-time gaze check, temporal "farther" veto, `treat_screens_as_real` for desk configs, Senses locked offline | uncommitted | `./scripts/traces.sh` → :8096 (+ `/live`); takes effect when the engine restarts |
 
 

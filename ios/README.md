@@ -1,6 +1,11 @@
 # Spidey Sense iOS log viewer
 
-A SwiftUI app (iOS 17+, no dependencies) that connects to the engine's WebSocket (`ws://<mac-lan-ip>:8765`). Five tabs:
+A SwiftUI app (iOS 17+, no dependencies) that connects to the engine's WebSocket (`ws://<mac-lan-ip>:8765`).
+
+**Since the 2026-10-10 redesign** the tab bar is **Home · Spidey triggers · Settings · Debug** (light theme; see the repo
+README "iOS app" section and `docs/screenshots/redesign/`). The technical screens below now live in the **Debug** tab
+(Log = "Raw event log" / "Live decisions", Senses = "Triggers (technical editor)", Devices, Haptics, and Settings =
+"Engine, connection & about"); the pause switch moved there too. The original description of those screens:
 
 - **Log**: live list of every haptic cue and why it fired. Tap a row for the JSON, filter by sense, swipe right for *Useful* or left for *Noisy* (saved to `logs/feedback.jsonl` on the Mac). **System rows** (gray info / amber warning / red error, tagged "engine" or "this phone") show link lost/restored and thermal safety cut-offs from the engine, plus this phone's own WebSocket drops and reconnects. They're hidden when a sense filter is on and have no swipe actions. If the engine has been unreachable for more than 3 s, a red banner shows the URL and the command to start it.
 - **Senses**: the engine's rules as "When / If / Feel", with on/off toggles. **+** opens the Sense Builder (presets: Blindspot, Heartbeat shift, Machine alert). Tap to edit, swipe to delete. Changes are saved to `rules.json` on the Mac and apply live.

@@ -492,3 +492,34 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   `tools/world_eval_report.py` (timeline strips: expected windows, gaze lane, Haiku ticks, buzz markers, verdict badges).
 - A harness bug (the scripted gaze looped every 10 s) caused D2 "false alarms"; fixed with `gaze_period`.
 - Result: A/B/C/D1/D2 all 3/3, 0 false alarms, gaze-cache reaction 0.24 s median after the gaze lands.
+
+### 19:40–20:20 iOS consumer redesign (Airbnb-style, light, for older users)
+- New tabs: **Home** · **Spidey triggers** · **Settings** · **Debug** (hub for every technical screen: pause detection,
+  Devices, Haptics & link check, Live decisions, raw log, technical trigger editor, Engine / connection / About; toggle
+  "Show Debug tab" in Settings, default on). Light appearance forced (`UIUserInterfaceStyle: Light` + `.preferredColorScheme`).
+  Protocol and engine behaviour unchanged: the wizard sends the same `rules.upsert` trigger JSON as the technical editor.
+- New files (`ios/SpideySense/SpideySense/`): `Theme.swift` (palette: off-white, near-black, coral #FF4F5E; soft cards;
+  one spring `response 0.35, damping 0.85`, fades under Reduce Motion; `Typo` = Plus Jakarta Sans headings with SF Pro Rounded
+  fallback), `EventGroups.swift` (grouping + plain-language headlines), `HomeView.swift`, `AlertsView.swift`, `AlertWizard.swift`,
+  `SettingsView.swift` (consumer Settings + `DebugView`). Old Settings → `EngineSettingsView.swift`. Technical views take
+  `embedded:` (pushed from Debug without a nested NavigationStack). The pause switch moved from the header chips to Debug.
+- Grouping: key = trigger id + object label (first noun of Haiku's free-text `hazard`, else of `why`: "Adult tiger standing on
+  rock" → "tiger"); an event joins the open group if it's within 60 s of that group's last buzz (rolling). Groups whose last buzz
+  is < 5 min old are big cards ("SPIDEY SENSE TINGLED!" on the newest); older ones go to "Earlier". Engine diagnostics are
+  stripped from `why` for display ("…; gaze in box 0.21 s [gaze cache…]").
+- Wizard: what (6 picture tiles or free text) → when (`gaze_mode`, notice memory 3/10/30 s) → wait (`temporal`, trend
+  defaults) → feel (optional; recommended from the answers: unseen/radar → urgent, looking_at/heart → pulse, always → ambient;
+  "Try it" = `haptic.preset` + phone haptics) → summary sentence + name + Advanced (min urgency 0/0.5/0.8, cooldown 10 s / 1 min /
+  5 min, Dot, raw description, radar / heart thresholds) → success ("Spidey Sense improved!", check draw-on). Editing a custom
+  trigger opens the wizard on the summary; built-ins open the technical editor.
+- Fonts: Plus Jakarta Sans variable TTF (OFL) in `Fonts/`, `UIAppFonts: [PlusJakartaSans.ttf]` (copied flat into the bundle).
+- Build: `cd ios/SpideySense && xcodegen generate && xcodebuild -project SpideySense.xcodeproj -scheme SpideySense
+  -destination 'id=<iPhone 16 sim>' -derivedDataPath <scratch>/dd CODE_SIGNING_ALLOWED=NO build` → BUILD SUCCEEDED.
+- Verified: sample mode (offline) and a live scratch engine (world sim, console sink, `server.port: 8799`, Bonjour disabled by
+  blocking the zeroconf import, `trace.enabled: false`); the wizard's Save created a trigger on that engine and it fired
+  ("Big animal"). Checked default text, XXL Dynamic Type and iPhone SE (3rd gen). Screenshots + `flow.mp4` (wizard end to
+  end, a new event + count bump, photo expand) in `docs/screenshots/redesign/`. Screenshot hooks: `-tab`, `-openWizard`,
+  `-wizardTile`, `-wizardStep`, `-wizardCustomize`, `-wizardAdvanced`, `-wizardSaved`, `-editAlert`, `-openEvent`,
+  `-openPhoto`, `-openTech`, `-expandPhoto`, `-homeScroll earlier`, `-forceEmpty`, `-debugOpen`, `-demoWizard`, `-demoArrive`.
+- Gotchas: `simctl launch` args must be word-split (zsh doesn't split `$ARGS`; use a bash script); `-serverURL ws://…` as a
+  launch argument overrides the stored URL without touching the migration; never point the simulator at :8765 (live Dot).

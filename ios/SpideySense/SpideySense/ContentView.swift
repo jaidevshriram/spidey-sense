@@ -1,30 +1,35 @@
 import SwiftUI
 
-/// Root: five tabs sharing one EventStream (one WebSocket to the Mac engine).
+/// Root: Home, My alerts, Settings (+ Debug, a hub for every technical screen), sharing one EventStream
+/// (one WebSocket to the Mac engine). Light theme app-wide.
 struct ContentView: View {
-    /// "" = automatic (see ServerConfig), else a custom URL typed in Settings.
+    /// "" = automatic (see ServerConfig), else a custom URL typed in Debug -> Engine.
     @AppStorage("serverURL") private var serverURL = ""
+    @AppStorage("showDebug") private var showDebug = true
     @State private var stream = EventStream()
     @State private var resolver = ServerResolver()
-    @SceneStorage("tab") private var tab = "log"
+    @SceneStorage("tab") private var tab = "home"
 
     private var effective: (url: String, source: ServerSource) { resolver.effective(stored: serverURL) }
 
     var body: some View {
         TabView(selection: $tab) {
-            LogView(stream: stream, serverURL: effective.url)
-                .tabItem { Label("Log", systemImage: "waveform") }.tag("log")
-            SensesView(stream: stream)
-                .tabItem { Label("Senses", systemImage: "dot.radiowaves.left.and.right") }.tag("senses")
-            DevicesView(stream: stream)
-                .tabItem { Label("Devices", systemImage: "sensor") }.tag("devices")
-            HapticsView(stream: stream)
-                .tabItem { Label("Haptics", systemImage: "hand.raised.fingers.spread") }.tag("haptics")
-            SettingsView(serverURL: $serverURL, stream: stream, effectiveURL: effective.url, source: effective.source)
-                .tabItem { Label("Settings", systemImage: "gearshape") }.tag("settings")
+            HomeView(stream: stream, openSettings: { tab = "settings" })
+                .tabItem { Label("Home", systemImage: "house.fill") }.tag("home")
+            AlertsView(stream: stream)
+                .tabItem { Label("Spidey triggers", systemImage: "bell.badge.fill") }.tag("alerts")
+            SettingsView(stream: stream)
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag("settings")
+            if showDebug {
+                DebugView(stream: stream, serverURL: $serverURL, effectiveURL: effective.url, source: effective.source)
+                    .tabItem { Label("Debug", systemImage: "wrench.and.screwdriver") }.tag("debug")
+            }
         }
+        .tint(Theme.accent)
+        .preferredColorScheme(.light)
+        .onChange(of: showDebug) { _, on in if !on && tab == "debug" { tab = "settings" } }
         .onAppear {
-            // Screenshot/demo hook: `-tab senses|devices|haptics|settings` launch argument picks the start tab.
+            // Screenshot/demo hook: `-tab home|alerts|settings|debug` launch argument picks the start tab.
             if let t = UserDefaults.standard.string(forKey: "tab") { tab = t }
         }
         .task {
@@ -53,6 +58,8 @@ struct ContentView: View {
 struct LogView: View {
     let stream: EventStream
     let serverURL: String
+    var embedded = false      // pushed from the Debug hub (no own NavigationStack)
+    var startLive = false     // Debug hub "Live decisions": open with the trace stream on
     @State private var selected: HapticEvent?
     @State private var senseFilter: String?   // trigger id; nil = all senses
     @State private var unreachable = false     // offline for more than 3 s
@@ -84,7 +91,7 @@ struct LogView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavWrap(embedded: embedded) {
             List {
                 if unreachable {
                     UnreachableBanner(url: stream.urlString ?? serverURL)
@@ -121,10 +128,10 @@ struct LogView: View {
                                            systemImage: "waveform", description: Text(serverURL))
                 }
             }
-            .navigationTitle("Spidey Sense")
+            .navigationTitle(embedded ? (startLive ? "Live decisions" : "Event log") : "Spidey Sense")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { StatusDot(status: stream.status) }
+                if !embedded { ToolbarItem(placement: .topBarLeading) { StatusDot(status: stream.status) } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("Sense", selection: $senseFilter) {
@@ -151,6 +158,7 @@ struct LogView: View {
             }
             .onChange(of: liveDecisions) { _, on in if !on { stream.subscribeTrace(false) } }
             .onDisappear { if liveDecisions { stream.subscribeTrace(false) } }
+            .onAppear { if startLive { liveDecisions = true } }
             .task(id: stream.isLive) {
                 if stream.isLive { unreachable = false; return }
                 try? await Task.sleep(for: .seconds(3))

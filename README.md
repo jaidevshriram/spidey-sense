@@ -37,7 +37,7 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `vlm/` | vision test scenes, latency report, desk-test results (detector code is `backend/spidey/detectors.py`) |
 | `backend/desk_test/` | desk test page (Commons images, see its `CREDITS.md`; synthetic lake scene), simulator harness, offline checks |
 | `radar/` | radar sense docs + calibration; `adapter/` = radar-lab's adapter + protocol v2 (reference) |
-| `ios/` | SwiftUI app: Log / Senses / Devices / Haptics / Settings (zero-config connect) |
+| `ios/` | SwiftUI app (light, consumer-style): Home / Spidey triggers (step-by-step wizard) / Settings, plus a Debug tab with the technical screens (zero-config connect) |
 | `docs/` | `STATUS.md` (current state, one page), `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped), `deck/` (slides) |
 | `scripts/` | setup, API key, playground, Bluetooth test/latency, `traces.sh` (trace viewer :8096) |
 
@@ -123,9 +123,25 @@ and press Run. Phone and Mac on the same Wi-Fi is the only assumption:
 - Pressing Run also starts the demo engine (fakes, console) if nothing is listening on 8765. Bluetooth runs still go via Terminal.
 - On a real iPhone: the team is preset (F9KC623A2R). Plug in once, pick the iPhone, Run, allow Local Network; tick "Connect via network" in Xcode → Devices for wireless installs. The phone must be on the same Wi-Fi as the Mac (at the venue: the Neon phone's hotspot).
 
-Tabs: **Log** (why each buzz fired + link-drop system rows; "Live decisions": every Haiku call's per-trigger fired / why-not) · **Senses** (rules; locked with a banner while not connected) · **Devices** (live El Jefe health) ·
-**Haptics** (Link check: Phone→Mac / Mac→El Jefe / El Jefe→Dot with ms, Ping all; light, vibration, thermal with a live
-chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
+Tabs (light theme, Airbnb-style cards; headings in Plus Jakarta Sans):
+- **Home** ("Spidey Sense"): buzzes from the last 5 minutes are big text-first cards ("A lion on your right. You hadn't
+  looked at it.", time, "Buzzed 3 times" with a mini timeline); older ones sit in a plain "Earlier" list. Repeat buzzes
+  collapse: same trigger id + the same object (main noun of Haiku's `hazard`/`why`), each buzz within 60 s of the group's
+  last one (rolling window). A photo button shows what the glasses saw (gaze dot + box); tap a card for the detail sheet
+  (snapshot sequence, why it buzzed, buzz timeline, sensor, helpful / not needed feedback, "Technical details" = raw Haiku
+  output + event JSON). Offline it shows sample data, marked "SAMPLE".
+- **Spidey triggers**: friendly cards with on/off toggles (long-press: edit / delete), "Always on" built-ins, "Suggested"
+  templates. **+ New Spidey trigger** opens a one-question-per-screen wizard: what to watch for (picture tiles or your own
+  words) → when to warn you (`gaze_mode`: only if you haven't noticed it / when you look at it / always, + notice memory)
+  → wait to be sure? (`temporal`) → how it should feel (optional; recommended feel from the answers, "Try it" plays
+  `haptic.preset` on the Dot + the phone) → summary sentence + name + "Advanced" (min urgency, cooldown, Dot, raw
+  description / radar / heart thresholds) → "Spidey Sense improved!". It sends the same trigger JSON as before.
+- **Settings**: connection in plain words, buzz strength, quiet mode, test buzz, stop all, "Show Debug tab".
+- **Debug** (on by default): pause detection, Devices, Haptics & link check, Live decisions, raw event log, the technical
+  trigger editor, and Engine / connection / About.
+Screenshots + a short screen recording: `docs/screenshots/redesign/` (`flow.mp4`). Launch-argument hooks for screenshots
+(`-tab`, `-openWizard`, `-wizardTile`, `-wizardStep`, `-openEvent`, `-expandPhoto`, `-debugOpen`, `-demoWizard`, `-demoArrive` …)
+are listed in the views' `onAppear`.
 
 ## Measured so far
 
@@ -160,3 +176,4 @@ in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CL
 - Desk test images from Wikimedia Commons; the lion is CC BY 2.0 by Kevin Pluck. Full list: `backend/desk_test/CREDITS.md`.
 - `bleak`, `minimalmodbus`, `pyserial`, `websockets`, FastAPI, OpenCV.
 - `open_oura` (MIT, github.com/Th0rgal/open_oura) for live Oura ring heart rate (`backend/spidey/heart.py`, setup in `docs/oura.md`).
+- **Plus Jakarta Sans** (SIL OFL 1.1, Tokotype), the app's heading font: `ios/SpideySense/SpideySense/Fonts/` (with `OFL.txt`).

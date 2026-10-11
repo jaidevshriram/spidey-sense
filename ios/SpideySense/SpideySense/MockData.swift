@@ -95,21 +95,29 @@ enum MockData {
         ]
     }()
 
+    /// Offline sample for Home + the Log: a lion that buzzed 3 times in the last ~1.5 min (one collapsed card),
+    /// a cyclist 3 min ago (second fresh card), and older items for "Earlier".
     static let events: [HapticEvent] = {
         let now = Date().timeIntervalSince1970
-        let thumbB64 = sampleThumb().jpegData(compressionQuality: 0.7)?.base64EncodedString() ?? ""
+        let water = sampleThumb().jpegData(compressionQuality: 0.8)?.base64EncodedString() ?? ""
+        func lion(_ shift: CGFloat) -> String { lionThumb(shift: shift).jpegData(compressionQuality: 0.8)?.base64EncodedString() ?? "" }
         // (pattern, hazard, where, seen, urgency, trigger id, trigger name, seconds ago, why)
         let rows: [(String, String, String, Bool, Double, String, String, Double, String?)] = [
-            ("urgent", "person", "behind-left", false, 0.9, "someone_behind", "Someone behind me", 3, nil),
-            ("urgent", "person", "ahead", false, 0.84, "person_to_water_unwatched", "Person near water I'm not watching", 6,
-             "Child walking toward the lake edge over the last three frames; you're looking away."),
-            ("urgent", "lion", "right", false, 0.81, "lion_unnoticed", "Lion I haven't noticed", 14,
-             "Lion on the right side of the enclosure; your gaze hasn't been on it for 4 s."),
-            ("urgent", "bike", "left", false, 0.86, "blindspot", "Blindspot", 22,
-             "Cyclist closing fast on your left, outside your gaze."),
-            ("ambient", "person", "right", true, 0.35, "heads_up", "heads_up", 47, nil),
-            ("pulse", "", "", false, 0.5, "heart_racing", "Heart racing", 160,
-             "HR 104 bpm, +33 over your 2-min median 71 for 12 s"),
+            ("urgent", "lion", "right", false, 0.86, "lion_unnoticed", "Lion I haven't noticed", 12,
+             "A lion is standing at the edge of the path on your right, and your eyes haven't gone to it."),
+            ("urgent", "lion", "right", false, 0.82, "lion_unnoticed", "Lion I haven't noticed", 41,
+             "A lion is on your right, partly behind the bushes. You were looking at the path ahead."),
+            ("urgent", "lion", "right", false, 0.80, "lion_unnoticed", "Lion I haven't noticed", 83,
+             "A lion appeared on the right side of the view; you haven't looked at it."),
+            ("urgent", "bike", "left", false, 0.86, "blindspot", "Blindspot", 190,
+             "A cyclist is coming up quickly on your left, outside where you're looking."),
+            ("urgent", "person", "behind-left", false, 0.9, "someone_behind", "Someone behind me", 18 * 60, nil),
+            ("urgent", "person", "ahead", false, 0.84, "person_to_water_unwatched", "Person near water I'm not watching", 52 * 60,
+             "A child is walking toward the lake edge over the last few seconds while you look away."),
+            ("urgent", "person", "ahead", false, 0.80, "person_to_water_unwatched", "Person near water I'm not watching", 52 * 60 + 35,
+             "A child is getting closer to the water's edge."),
+            ("pulse", "", "", false, 0.5, "heart_racing", "Heart racing", 2 * 3600 + 300,
+             "Your heart rate went to 104 bpm, 33 above your normal of 71, for 12 seconds."),
         ]
         return rows.enumerated().compactMap { i, r in
             var d: [String: Any] = [
@@ -126,14 +134,15 @@ enum MockData {
             case "someone_behind":
                 d["sensor"] = "radar"; d["latency_ms"] = 42
                 d["radar"] = ["distance_m": 1.4, "speed_mps": 0.6, "angle_deg": -32, "side": "left"] as [String: Any]
-                d["why"] = "Radar: target approaching from behind-left, inside 2.0 m."
+                d["why"] = "Someone walked up to about 1.4 m behind you, on your left."
             case "person_to_water_unwatched":
-                d["sensor"] = "camera"; d["thumb"] = thumbB64; d["gaze_mode"] = "unseen"; d["looked_at_s_ago"] = 5.2
+                d["sensor"] = "camera"; d["thumb"] = water; d["gaze_mode"] = "unseen"; d["looked_at_s_ago"] = 5.2
                 d["trend"] = ["gap": [0.8, 0.4, 0.1], "ordinal": ["closer", "closer", "closer"],
                               "touching": false, "loom": 1.3] as [String: Any]
             case "lion_unnoticed":
-                d["sensor"] = "camera"; d["thumb"] = thumbB64; d["gaze_mode"] = "unseen"; d["looked_at_s_ago"] = 4.1
-                d["paused"] = true
+                d["sensor"] = "camera"; d["thumb"] = lion(CGFloat(i) * 6); d["gaze_mode"] = "unseen"
+                d["looked_at_s_ago"] = 4.1 + Double(i); d["call_id"] = 4120 + i
+                d["raw"] = "{\"hazard\": \"lion\", \"x\": 0.78, \"urgency\": 0.86, \"triggers\": {\"lion_unnoticed\": {\"match\": true, \"bbox\": [0.66, 0.38, 0.92, 0.80]}}}"
             case "blindspot", "heads_up":
                 d["sensor"] = "camera"
             case "heart_racing":
@@ -144,6 +153,52 @@ enum MockData {
             return HapticEvent(d)
         }
     }()
+
+    /// Demo hook (`-demoArrive YES`): a fresh sample event, as if the engine just sent it.
+    static func demoEvent(_ kind: String, id: Int) -> HapticEvent? {
+        let now = Date().timeIntervalSince1970
+        var d: [String: Any] = ["id": id, "ts": now, "pattern": "urgent", "dot": NSNull(), "sample": true,
+                                "sensor": "camera", "gaze_mode": "unseen", "latency_ms": 910]
+        switch kind {
+        case "lion":
+            d["rule"] = "lion_unnoticed"; d["trigger"] = "lion_unnoticed"; d["trigger_name"] = "Lion I haven't noticed"
+            d["detection"] = ["hazard": "lion", "where": "right", "seen_by_user": false, "urgency": 0.88] as [String: Any]
+            d["why"] = "The lion is still on your right and a little closer; you haven't looked at it yet."
+            d["thumb"] = lionThumb(shift: 14).jpegData(compressionQuality: 0.8)?.base64EncodedString() ?? ""
+            d["looked_at_s_ago"] = 4.8
+        default:
+            d["rule"] = "step_down"; d["trigger"] = "step_down"; d["trigger_name"] = "Stairs or a step down"
+            d["detection"] = ["hazard": "step", "where": "ahead", "seen_by_user": false, "urgency": 0.7] as [String: Any]
+            d["why"] = "There's a step down about two paces ahead and you're looking to the side."
+        }
+        d["reason"] = "\(d["trigger"]!): sample"
+        return HapticEvent(d)
+    }
+
+    /// Sample camera frame (320 x 200): a savanna path, a lion on the right in a box, the gaze dot on the path.
+    static func lionThumb(shift: CGFloat = 0) -> UIImage {
+        let size = CGSize(width: 320, height: 200)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            let c = ctx.cgContext
+            UIColor(red: 0.70, green: 0.84, blue: 0.95, alpha: 1).setFill(); c.fill(CGRect(x: 0, y: 0, width: 320, height: 92))
+            UIColor(red: 0.86, green: 0.76, blue: 0.48, alpha: 1).setFill(); c.fill(CGRect(x: 0, y: 92, width: 320, height: 108))
+            UIColor(red: 0.47, green: 0.60, blue: 0.32, alpha: 1).setFill()
+            for x in stride(from: -10, to: 330, by: 46) { c.fillEllipse(in: CGRect(x: CGFloat(x), y: 76, width: 60, height: 30)) }
+            // path
+            UIColor(red: 0.78, green: 0.66, blue: 0.42, alpha: 1).setFill()
+            let p = UIBezierPath(); p.move(to: CGPoint(x: 120, y: 200)); p.addLine(to: CGPoint(x: 150, y: 96))
+            p.addLine(to: CGPoint(x: 166, y: 96)); p.addLine(to: CGPoint(x: 230, y: 200)); p.close(); p.fill()
+            // lion
+            let lion = NSAttributedString(string: "🦁", attributes: [.font: UIFont.systemFont(ofSize: 58)])
+            lion.draw(at: CGPoint(x: 226 - shift, y: 86))
+            // bbox
+            UIColor.yellow.setStroke(); c.setLineWidth(2.5)
+            c.stroke(CGRect(x: 218 - shift, y: 80, width: 82, height: 82))
+            // gaze dot on the path ahead (not on the lion)
+            UIColor.red.setFill(); c.fillEllipse(in: CGRect(x: 146, y: 118, width: 14, height: 14))
+            UIColor.white.setStroke(); c.setLineWidth(2); c.strokeEllipse(in: CGRect(x: 146, y: 118, width: 14, height: 14))
+        }
+    }
 
     /// Tiny placeholder camera frame (240 x 160): lake, a person, the bbox and the gaze dot, like the engine draws.
     static func sampleThumb() -> UIImage {

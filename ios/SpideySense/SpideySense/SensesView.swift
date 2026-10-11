@@ -74,6 +74,7 @@ enum TriggerColor {
 
 struct SensesView: View {
     let stream: EventStream
+    var embedded = false   // pushed from the Debug hub (no own NavigationStack)
     @State private var editing: SenseRule?
     @State private var creating = false
     @State private var confirmDelete: SenseRule?
@@ -83,7 +84,7 @@ struct SensesView: View {
     private var offline: Bool { !stream.isLive }
 
     var body: some View {
-        NavigationStack {
+        NavWrap(embedded: embedded) {
             List {
                 if offline {
                     NotConnectedBanner()

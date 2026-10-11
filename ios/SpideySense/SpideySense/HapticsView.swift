@@ -7,6 +7,7 @@ import UIKit
 /// El Jefe -> Dot. Protocol: docs/protocol.md "Haptics tab + link check".
 struct HapticsView: View {
     let stream: EventStream
+    var embedded = false   // pushed from the Debug hub (no own NavigationStack)
 
     @State private var color = Color(red: 0, green: 0.6, blue: 1)
     @State private var ledMode = "global"
@@ -26,7 +27,7 @@ struct HapticsView: View {
     private var targetMax: Double { max(40, UserDefaults.standard.double(forKey: "debugTargetMax")) }
 
     var body: some View {
-        NavigationStack {
+        NavWrap(embedded: embedded) {
             ScrollView {
                 VStack(spacing: 14) {
                     if !live {

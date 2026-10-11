@@ -1,7 +1,9 @@
 import SwiftUI
 
-struct SettingsView: View {
+/// Debug hub -> "Engine & connection": server URL, master intensity, quiet, test patterns, stop, About.
+struct EngineSettingsView: View {
     @Binding var serverURL: String          // "" = automatic
+    var embedded = false
     let stream: EventStream
     let effectiveURL: String
     let source: ServerSource
@@ -11,7 +13,7 @@ struct SettingsView: View {
     @FocusState private var urlFocused: Bool
 
     var body: some View {
-        NavigationStack {
+        NavWrap(embedded: embedded) {
             Form {
                 Section {
                     TextField("Automatic (\(effectiveURL))", text: $draft)
@@ -75,7 +77,7 @@ struct SettingsView: View {
                 aboutSection
             }
             .engineHeader(stream)
-            .navigationTitle("Settings")
+            .navigationTitle("Engine & connection")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear { draft = ServerConfig.isAutomatic(serverURL) ? "" : serverURL; intensity = stream.settings.intensity }
             .onChange(of: stream.settings.intensity) { _, v in intensity = v }
