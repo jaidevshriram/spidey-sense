@@ -454,8 +454,10 @@ async function tick(){
     pill("pear",!!st.listening,st.listening?"Hearing":"Not listening");
     const h=st.heart; let ht="Heart –";
     if(h&&h.bpm){ const ago=h.reading_ts?Math.round((Date.now()/1000-h.reading_ts)/60):null; ht=`♥ ${Math.round(h.bpm)} bpm${ago!=null?` · ${ago<1?"now":ago+" min ago"}`:""}`; }
-    else if(h&&h.connected) ht="♥ Oura · waiting for sync";
-    pill("pheart",!!(h&&h.connected),ht);
+    // only show a real, recent reading (< 1 h old); otherwise hide the pill entirely
+    const fresh=h&&h.bpm&&(!h.reading_ts||Date.now()/1000-h.reading_ts<3600);
+    $("pheart").style.display=fresh?"":"none";
+    pill("pheart",!!fresh,ht);
     $("heardtxt").textContent=st.heard||""; $("heard").classList.toggle("show",!!st.heard);
     $("status").textContent=st.paused?"PAUSED":`video ${Math.round(st.frame_age_s*1000)} ms`;
     const b=$("banner"), lf=st.last_fire;
