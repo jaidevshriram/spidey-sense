@@ -12,7 +12,7 @@ Built at the INTERFACE hackathon, October 2026.
 phone. Haiku boxes the cardboard box ahead, and the Dot buzzes 1.7 s after the frame ("Something in my way", amber).
 Left: the demo screen's glasses view (`/demo`). Right: the app showing that run's real buzzes.*
 
-**Watch:** [the demo, 75 s](site/assets/demo.mp4) (real test-walk footage, then the app) · **Project page:** [`site/`](site/index.html)
+**Project page:** [`site/`](site/index.html)
 
 ## Scenarios
 
