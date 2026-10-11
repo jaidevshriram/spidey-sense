@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// One haptic event as broadcast by the engine. Raw JSON is kept for the detail sheet.
 struct HapticEvent: Identifiable {
@@ -17,6 +18,14 @@ struct HapticEvent: Identifiable {
     let trigger: String?       // id of the trigger that fired (newer engines)
     let triggerName: String?   // its display name
     let why: String?           // Haiku's one-line reason (newer engines)
+    // v3 (all optional)
+    let sensor: String?        // camera | radar
+    let thumb: UIImage?        // decoded `thumb` (base64 JPEG, gaze dot + bbox drawn)
+    let radar: RadarReading?
+    let gazeMode: String?
+    let lookedAtSAgo: Double?
+    let paused: Bool           // engine was paused: logged, nothing reached the Dot
+    let trend: EventTrend?
     let raw: [String: Any]
 
     init?(_ d: [String: Any]) {
@@ -37,8 +46,22 @@ struct HapticEvent: Identifiable {
         trigger = (d["trigger"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         triggerName = (d["trigger_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         why = (d["why"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        radar = RadarReading(d["radar"] as? [String: Any])
+        sensor = (d["sensor"] as? String) ?? (radar != nil ? "radar" : nil)
+        if let b64 = d["thumb"] as? String, !b64.isEmpty,
+           let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) {
+            thumb = UIImage(data: data)
+        } else {
+            thumb = nil
+        }
+        gazeMode = d["gaze_mode"] as? String
+        lookedAtSAgo = (d["looked_at_s_ago"] as? NSNumber)?.doubleValue
+        paused = d["paused"] as? Bool ?? false
+        trend = EventTrend(d["trend"] as? [String: Any])
         var r = d
         r.removeValue(forKey: "type")
+        // Keep the detail JSON readable: the image is shown above it.
+        if let t = d["thumb"] as? String { r["thumb"] = "<base64 JPEG, \(t.count) chars>" }
         raw = r
     }
 
@@ -51,6 +74,8 @@ struct HapticEvent: Identifiable {
     var triggerID: String { trigger ?? triggerSlug(rule) }
     /// Label for the row: `trigger_name`, falling back to `rule`.
     var triggerLabel: String { triggerName ?? rule }
+
+    var isRadar: Bool { sensor == "radar" }
 
     /// Built by MockData for the offline demo, never from the engine.
     var isSample: Bool { raw["sample"] as? Bool ?? false }
@@ -104,4 +129,45 @@ func triggerSlug(_ s: String, fallback: String = "rule") -> String {
     }
     let t = out.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
     return t.isEmpty ? fallback : t
+}
+
+/// Event `trend` for temporal triggers. v3.3: {gap: [..] body-heights, ordinal: [closer|same|farther], touching, loom}.
+/// Also reads the superseded v3.1/v3.2 shape {values: [..], unit: m|closeness|gap}.
+struct EventTrend {
+    var gap: [Double] = []
+    var ordinal: [String] = []
+    var touching = false
+    var loom: Double?
+    var values: [Double] = []   // legacy
+    var unit: String?           // legacy
+
+    init?(_ d: [String: Any]?) {
+        guard let d else { return nil }
+        func nums(_ k: String) -> [Double] { (d[k] as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.doubleValue } }
+        gap = nums("gap"); values = nums("values")
+        ordinal = (d["ordinal"] as? [Any] ?? []).compactMap { $0 as? String }
+        touching = d["touching"] as? Bool ?? false
+        loom = (d["loom"] as? NSNumber)?.doubleValue
+        unit = d["unit"] as? String
+        if gap.isEmpty && values.isEmpty && ordinal.isEmpty && !touching { return nil }
+    }
+
+    /// "gap 0.8 → 0.4 → 0.1 body-heights · closer ×3"
+    var summary: String {
+        var parts: [String] = []
+        if !gap.isEmpty {
+            parts.append("gap " + gap.map { String(format: "%.1f", $0) }.joined(separator: " → ") + " body-heights")
+        } else if !values.isEmpty {
+            switch unit {
+            case "closeness", "gap": parts.append((unit == "gap" ? "gap " : "")
+                + values.map { "\(Int(($0 * 100).rounded()))%" }.joined(separator: " → "))
+            default: parts.append(values.map { String(format: "%.1f", $0) }.joined(separator: " → ") + " \(unit ?? "")")
+            }
+        }
+        if let last = ordinal.last {
+            let run = ordinal.reversed().prefix { $0 == last }.count
+            parts.append(run > 1 ? "\(last) ×\(run)" : last)
+        }
+        return parts.joined(separator: " · ")
+    }
 }

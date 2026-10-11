@@ -16,6 +16,11 @@ final class EventStream {
     private(set) var rules: [SenseRule] = MockData.rules
     private(set) var devices: [DeviceInfo] = MockData.devices
     private(set) var settings = EngineSettings()
+    /// v3 `status` from the engine (nil until one arrives, and while offline).
+    private(set) var engineStatus: StatusMessage?
+    private(set) var engineStatusAt: Date?
+    /// Engine pause (v3): mirrored locally as soon as the switch is flipped, then from `status.paused`.
+    private(set) var paused = false
     /// True until a hello with rules arrives from a real engine.
     private(set) var rulesAreSample = true
     /// When the engine last sent its rule list (hello or rules.list).
@@ -111,6 +116,7 @@ final class EventStream {
             }
             status = .disconnected
             telemetry = nil
+            engineStatus = nil
             devicesAreSample = true   // device cards fall back to sample data while offline
             try? await Task.sleep(for: .seconds(backoff))
             backoff = min(backoff * 2, 5)
@@ -132,6 +138,10 @@ final class EventStream {
                 if let r = h.rules { applyEcho(r) }
                 if let d = h.devices { setDevices(d) }
                 if let s = h.settings { settings = s }
+                if let st = h.status {
+                    engineStatus = st; engineStatusAt = Date()
+                    if let p = st.paused { paused = p }
+                }
             }
         case "event":
             add(obj)
@@ -139,6 +149,11 @@ final class EventStream {
             if let m = try? dec.decode(RulesListMessage.self, from: data) { applyEcho(m.rules) }
         case "device.status":
             if let m = try? dec.decode(DeviceStatusMessage.self, from: data) { setDevices(m.devices) }
+        case "status":
+            if let m = try? dec.decode(StatusMessage.self, from: data) {
+                engineStatus = m; engineStatusAt = Date()
+                if let p = m.paused { paused = p }
+            }
         case "settings":
             if let s = try? dec.decode(EngineSettings.self, from: data) { settings = s }
         case "ack":
@@ -166,6 +181,7 @@ final class EventStream {
     /// carries any trigger field) keep the extras this phone last sent for the same id, so a custom
     /// trigger doesn't turn into a blank built-in. Newer engines' echoes are taken as-is.
     private func applyEcho(_ echoed: [SenseRule]) {
+        let previous = rules, wasSample = rulesAreSample
         let engineKnowsTriggers = echoed.contains { $0.hasTriggerExtras }
         if engineKnowsTriggers || rulesAreSample {
             rules = echoed
@@ -175,6 +191,16 @@ final class EventStream {
                 guard let old = mine[r.id], old.hasTriggerExtras else { return r }
                 var m = r
                 m.kind = old.kind; m.describe = old.describe; m.intensity = old.intensity; m.rgb = old.rgb
+                return m
+            }
+        }
+        // Same for the v3 fields (gaze_mode, notice_memory_s, temporal, trend) on engines without v3.
+        if !wasSample && !echoed.contains(where: { $0.hasV3Extras }) {
+            let mine = Dictionary(previous.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            rules = rules.map { r in
+                guard let old = mine[r.id], old.hasV3Extras, !r.hasV3Extras else { return r }
+                var m = r
+                m.gazeMode = old.gazeMode; m.noticeMemoryS = old.noticeMemoryS; m.temporal = old.temporal; m.trend = old.trend
                 return m
             }
         }
@@ -198,6 +224,8 @@ final class EventStream {
             if a.capped == true { note = "capped at \(a.value.map { String(format: "%.0f", $0) } ?? "40") °C" }
             else if let m = a.mode, let v = a.value { note = "\(m) \(String(format: "%g", v))" }
         }
+        // An engine without v3 rejects `pause`: undo the optimistic local switch.
+        if kind == "command", a.name == "pause", a.ok == false { paused = engineStatus?.paused ?? false }
         logAck(kind: what, ok: a.ok ?? false, ms: a.ms, note: note)
     }
 
@@ -320,6 +348,7 @@ final class EventStream {
         switch c.name {   // mirror locally so the UI reacts even before the engine echoes settings
         case .quiet: if case .bool(let on)? = c.args["on"] { settings.quiet = on }
         case .setIntensity: if case .number(let v)? = c.args["value"] { settings.intensity = v }
+        case .pause: if case .bool(let on)? = c.args["on"] { paused = on }
         default: break
         }
         send(c)

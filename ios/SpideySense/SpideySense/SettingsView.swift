@@ -71,13 +71,38 @@ struct SettingsView: View {
                 }
 
                 Section { Button("Clear log", role: .destructive) { stream.clear() } }
+
+                aboutSection
             }
+            .engineHeader(stream)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear { draft = ServerConfig.isAutomatic(serverURL) ? "" : serverURL; intensity = stream.settings.intensity }
             .onChange(of: stream.settings.intensity) { _, v in intensity = v }
             .alert("Stop sent", isPresented: $confirmStop) { Button("OK") {} } message: {
                 Text(stream.isLive ? "Asked the Mac to stop all haptics." : "Not connected: nothing to stop.")
+            }
+        }
+    }
+
+    /// v3 `status.about` (what the engine runs) plus this app's version.
+    private var aboutSection: some View {
+        let live = stream.engineStatus?.about
+        let about = live ?? (stream.isLive ? nil : MockData.status.about)
+        let jefeSink = stream.devicesAreSample ? nil : stream.devices.first(where: { $0.id == "el_jefe" })?.sink
+        let info = Bundle.main.infoDictionary
+        return Section {
+            LabeledContent("Config", value: about?.config ?? "—")
+            LabeledContent("Model", value: about?.model ?? "—")
+            LabeledContent("Commit", value: about?.commit ?? "—")
+            LabeledContent("Sink") {
+                let sink = about?.sink ?? jefeSink ?? "—"
+                Text(sink).foregroundStyle(sink == "console" ? .orange : .secondary)
+            }
+            LabeledContent("App", value: "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))")
+        } header: { Text("About") } footer: {
+            if live == nil {
+                Text(stream.isLive ? "This engine doesn't send status.about yet." : "Sample values: not connected to the Mac engine.")
             }
         }
     }

@@ -93,6 +93,7 @@ struct SensesView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .engineHeader(stream)
             .overlay {
                 if stream.rules.isEmpty {
                     ContentUnavailableView("No triggers", systemImage: "dot.radiowaves.left.and.right",
@@ -179,7 +180,8 @@ struct SenseRow: View {
 
     private var details: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: rule.isCustom ? "text.bubble" : (rule.senseSource?.icon ?? "questionmark"))
+            Image(systemName: rule.isRadar ? "dot.radiowaves.right"
+                  : rule.isCustom ? "text.bubble" : (rule.senseSource?.icon ?? "questionmark"))
                 .font(.title3).foregroundStyle(patternColor(rule.feel)).frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -192,8 +194,14 @@ struct SenseRow: View {
                     }
                 }
                 if rule.isCustom {
-                    Text(rule.describe ?? "")
-                        .font(.subheadline).lineLimit(2).truncationMode(.tail)
+                    if rule.isRadar {
+                        Text("Radar: someone approaching, within \(RuleText.fmt(rule.cond.maxDistanceM ?? 2)) m")
+                            .font(.subheadline)
+                    } else {
+                        Text(rule.describe ?? "")
+                            .font(.subheadline).lineLimit(2).truncationMode(.tail)
+                    }
+                    TriggerBadges(rule: rule)
                     customSummary
                 } else {
                     line("When", RuleText.when(rule))
@@ -212,7 +220,6 @@ struct SenseRow: View {
     private var customSummary: some View {
         let rgb = rule.rgb ?? TriggerColor.defaultRGB(rule.feel)
         var tail = " · cooldown \(RuleText.fmt(rule.cooldownS))s"
-        if rule.cond.unseen == true { tail += " · only if unseen" }
         if rule.dot != nil { tail += " · \(RuleText.dot(rule))" }
         return (Text("Feel ").bold()
                 + Text("\(rule.feel) · \(RuleText.pct(rule.intensity ?? 1)) · ")
@@ -224,6 +231,31 @@ struct SenseRow: View {
 
     private func line(_ k: String, _ v: String) -> some View {
         (Text(k + " ").font(.caption.bold()).foregroundStyle(.secondary) + Text(v).font(.subheadline))
+    }
+}
+
+/// Compact v3 badges: 👁 gaze mode, ⏱ over time, 📡 radar thresholds.
+struct TriggerBadges: View {
+    let rule: SenseRule
+    var body: some View {
+        HStack(spacing: 4) {
+            if rule.isRadar {
+                badge("📡 ≤\(RuleText.fmt(rule.cond.maxDistanceM ?? 2)) m · ≥\(RuleText.fmt(rule.cond.minSpeedMps ?? 0.3)) m/s",
+                      .teal)
+            } else {
+                let g = rule.effectiveGazeMode
+                badge("👁 \(g.short)" + (g == .unseen ? " \(RuleText.fmt(rule.noticeMemoryS ?? 3))s" : ""), .blue)
+                if rule.isTemporal {
+                    badge("⏱ over time" + (rule.trend.map { " ×\($0.ticks)" } ?? ""), .purple)
+                }
+            }
+        }
+    }
+    private func badge(_ t: String, _ c: Color) -> some View {
+        Text(t).font(.caption2.bold()).foregroundStyle(c)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(c.opacity(0.12), in: Capsule())
+            .lineLimit(1).fixedSize()
     }
 }
 
@@ -274,8 +306,16 @@ struct SenseBuilder: View {
     @State private var metric = "cpu_temp_c"
     @State private var threshold = 90.0
     // Custom conditions
-    @State private var onlyUnseen = true
     @State private var minUrgency = 0.5
+    // v3: sensor, gaze mode, over time, radar
+    @State private var sensor: SenseSource = .neon        // .neon (camera) | .radar
+    @State private var gaze: GazeMode = .unseen
+    @State private var noticeMemory = 3.0
+    @State private var temporal = false
+    @State private var trendTicks = 3
+    @State private var sensitivity = "medium"
+    @State private var maxDistance = 2.0
+    @State private var minSpeed = 0.3
     // Haptic action (both kinds)
     @State private var feel: FeelKind = .urgent
     @State private var customFeel = ""
@@ -292,7 +332,8 @@ struct SenseBuilder: View {
     private var effectiveName: String { trimmedName.isEmpty ? Self.suggestName(from: trimmedDescribe) : trimmedName }
     private var canSave: Bool {
         !(feel == .custom && feelKey.isEmpty)
-            && (isCustom ? !trimmedDescribe.isEmpty && !effectiveName.isEmpty : !trimmedName.isEmpty)
+            && (isCustom ? (sensor == .radar ? !trimmedName.isEmpty : !trimmedDescribe.isEmpty && !effectiveName.isEmpty)
+                         : !trimmedName.isEmpty)
     }
 
     var body: some View {
@@ -336,7 +377,9 @@ struct SenseBuilder: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     ForEach(MockData.customTemplates) { t in
-                        Button { load(t, asTemplate: true) } label: { Label(t.name, systemImage: "text.bubble") }
+                        Button { load(t, asTemplate: true) } label: {
+                            Label(t.name, systemImage: t.isRadar ? "dot.radiowaves.right" : "text.bubble")
+                        }
                             .buttonStyle(.bordered).tint(.purple)
                     }
                     ForEach(MockData.presets) { p in
@@ -355,25 +398,71 @@ struct SenseBuilder: View {
         } header: {
             Text("Quick start")
         } footer: {
-            Text("Plain-English triggers are judged by Haiku on the Mac, in the same call that spots hazards.")
+            Text("Plain-English camera triggers are judged by Haiku on the Mac, in the same call that spots hazards. Radar triggers fire on the radar's approaching targets.")
         }
     }
 
     @ViewBuilder private var customSections: some View {
-        Section("Describe what to watch for and how it should work") {
+        Section {
+            Picker("Sensor", selection: $sensor) {
+                Label("Camera", systemImage: "camera.fill").tag(SenseSource.neon)
+                Label("Radar", systemImage: "dot.radiowaves.right").tag(SenseSource.radar)
+            }
+            .pickerStyle(.segmented)
+        } header: { Text("Sensor") } footer: {
+            Text(sensor == .radar ? "Radar watches behind and beside you. Radar targets always count as \"haven't looked at it\"."
+                                  : "Camera = the Neon's scene camera plus where you're looking.")
+        }
+        if sensor == .radar { radarSections } else { cameraSections }
+    }
+
+    @ViewBuilder private var cameraSections: some View {
+        Section("Describe what to watch for") {
             ZStack(alignment: .topLeading) {
                 if describe.isEmpty {
-                    Text("e.g. warn me if someone holding a knife is near and I haven't looked at them")
+                    Text("e.g. someone holding a knife near me")
                         .foregroundStyle(.tertiary).padding(.top, 8).padding(.leading, 5)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: $describe)
-                    .frame(minHeight: 96)
+                    .frame(minHeight: 80)
                     .scrollContentBackground(.hidden)
             }
         }
+        Section {
+            Picker("Fire when", selection: $gaze) {
+                ForEach(GazeMode.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            if gaze == .unseen {
+                Stepper("Noticed memory \(RuleText.fmt(noticeMemory)) s", value: $noticeMemory, in: 1...10, step: 1)
+            }
+        } header: { Text("Gaze") } footer: {
+            switch gaze {
+            case .unseen: Text("Fires only if your gaze hasn't been on it. Once you've looked, it stays quiet for the noticed memory after your gaze leaves.")
+            case .lookingAt: Text("Fires only while you're looking at it.")
+            case .any: Text("Fires whether or not you've looked at it.")
+            }
+        }
+        Section {
+            Toggle("Watch over time", isOn: $temporal)
+            if temporal {
+                Stepper("Consistent for \(trendTicks) ticks", value: $trendTicks, in: 2...6)
+                VStack(alignment: .leading) {
+                    Text("Sensitivity")
+                    Picker("Sensitivity", selection: $sensitivity) {
+                        Text("Low").tag("low"); Text("Medium").tag("medium"); Text("High").tag("high")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+        } header: { Text("Over time") } footer: {
+            Text(temporal
+                 ? "Compares the last ~1.4 s (3 frames). Fires when the change is consistent for that many ticks; high sensitivity counts smaller changes."
+                 : "Compares the last ~1.4 s (3 frames), so the description can talk about change, e.g. \"getting closer to the water\".")
+        }
         Section("When") {
-            Toggle("Only if I haven't looked at it", isOn: $onlyUnseen)
             VStack(alignment: .leading) {
                 Text("Min urgency \(minUrgency, specifier: "%.2f")")
                 Slider(value: $minUrgency, in: 0...1, step: 0.05)
@@ -382,10 +471,24 @@ struct SenseBuilder: View {
         }
     }
 
+    @ViewBuilder private var radarSections: some View {
+        Section("Radar") {
+            VStack(alignment: .leading) {
+                Text("Within \(maxDistance, specifier: "%.1f") m")
+                Slider(value: $maxDistance, in: 0.5...4, step: 0.1)
+            }
+            VStack(alignment: .leading) {
+                Text("Faster than \(minSpeed, specifier: "%.2f") m/s")
+                Slider(value: $minSpeed, in: 0.1...1.5, step: 0.05)
+            }
+            Stepper("Cooldown \(RuleText.fmt(cooldown)) s", value: $cooldown, in: 1...60, step: 1)
+        }
+    }
+
     @ViewBuilder private var builtinSections: some View {
         Section("When") {
             Picker("Source", selection: $source) {
-                ForEach(SenseSource.allCases) { Label($0.label, systemImage: $0.icon).tag($0) }
+                ForEach(SenseSource.builtinCases) { Label($0.label, systemImage: $0.icon).tag($0) }
             }
             if source == .neon {
                 TextField("Hazard kinds (comma-separated, or any)", text: $hazards)
@@ -459,8 +562,16 @@ struct SenseBuilder: View {
         else if c.unseen == true { cond = .hazardUnseen; urgency = c.minUrgency ?? 0 }
         else if c.minUrgency != nil { cond = .urgencyAtLeast; urgency = c.minUrgency ?? 0.6 }
         else { cond = .always }
-        onlyUnseen = r.isCustom ? (c.unseen ?? false) : true
         minUrgency = c.minUrgency ?? 0.5
+        sensor = r.isRadar ? .radar : .neon
+        if r.isRadar { source = .neon }   // the built-in picker has no radar
+        gaze = r.effectiveGazeMode
+        noticeMemory = min(max(r.noticeMemoryS ?? 3, 1), 10)
+        temporal = r.isTemporal
+        trendTicks = min(max(r.trend?.ticks ?? 3, 2), 6)
+        sensitivity = ["low", "medium", "high"].contains(r.trend?.sensitivity ?? "") ? r.trend!.sensitivity : "medium"
+        maxDistance = min(max(c.maxDistanceM ?? 2.0, 0.5), 4)
+        minSpeed = min(max(c.minSpeedMps ?? 0.3, 0.1), 1.5)
         if let f = FeelKind(rawValue: r.feel), f != .custom { feel = f; customFeel = "" }
         else { feel = .custom; customFeel = r.feel }
         intensity = r.intensity ?? 1
@@ -481,10 +592,24 @@ struct SenseBuilder: View {
         let rgb = TriggerColor.rgb(led)
         if isCustom {
             var c = RuleCondition()
-            c.unseen = onlyUnseen; c.minUrgency = minUrgency
-            return SenseRule(id: id, name: finalName, enabled: enabled, source: SenseSource.neon.rawValue,
-                             when: .any, cond: c, feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
-                             kind: "custom", describe: trimmedDescribe, intensity: (intensity * 100).rounded() / 100, rgb: rgb)
+            let radar = sensor == .radar
+            if radar {
+                // Radar is always "unseen"; keep if.unseen in sync with gaze_mode.
+                c.unseen = true
+                c.maxDistanceM = (maxDistance * 10).rounded() / 10
+                c.minSpeedMps = (minSpeed * 100).rounded() / 100
+            } else {
+                c.unseen = gaze == .unseen; c.minUrgency = minUrgency
+            }
+            var r = SenseRule(id: id, name: finalName, enabled: enabled, source: sensor.rawValue,
+                              when: .any, cond: c, feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
+                              kind: "custom", describe: radar ? nil : trimmedDescribe,
+                              intensity: (intensity * 100).rounded() / 100, rgb: rgb)
+            r.gazeMode = radar ? GazeMode.unseen.rawValue : gaze.rawValue
+            r.noticeMemoryS = !radar && gaze == .unseen ? noticeMemory : nil
+            r.temporal = radar ? false : temporal
+            r.trend = !radar && temporal ? TrendConfig(ticks: trendTicks, sensitivity: sensitivity) : nil
+            return r
         }
         var c = original?.cond ?? RuleCondition()
         // Reset the keys this builder owns; keep anything else (e.g. max_urgency from config.yaml).
@@ -502,11 +627,17 @@ struct SenseBuilder: View {
         // built-ins keep following the engine's pattern colours.
         let keepIntensity = intensity < 0.995 || original?.intensity != nil
         let keepRGB = ledTouched || original?.rgb != nil
-        return SenseRule(id: id, name: finalName, enabled: enabled, source: source.rawValue,
-                         when: source == .neon && !kinds.isEmpty ? .kinds(kinds) : .any, cond: c,
-                         feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
-                         kind: "builtin", describe: nil,
-                         intensity: keepIntensity ? (intensity * 100).rounded() / 100 : nil, rgb: keepRGB ? rgb : nil)
+        var r = SenseRule(id: id, name: finalName, enabled: enabled, source: source.rawValue,
+                          when: source == .neon && !kinds.isEmpty ? .kinds(kinds) : .any, cond: c,
+                          feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
+                          kind: "builtin", describe: nil,
+                          intensity: keepIntensity ? (intensity * 100).rounded() / 100 : nil, rgb: keepRGB ? rgb : nil)
+        // Built-ins keep any v3 fields they came with; gaze_mode is re-derived so it stays in sync with if.unseen.
+        if let o = original {
+            r.gazeMode = o.gazeMode == nil ? nil : (c.unseen == true ? GazeMode.unseen.rawValue : GazeMode.any.rawValue)
+            r.noticeMemoryS = o.noticeMemoryS; r.temporal = o.temporal; r.trend = o.trend
+        }
+        return r
     }
 
     /// "warn me if someone holding a knife is near…" -> "Someone holding a knife".

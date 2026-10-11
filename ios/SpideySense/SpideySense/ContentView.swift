@@ -111,6 +111,7 @@ struct LogView: View {
                 }
             }
             .listStyle(.plain)
+            .engineHeader(stream)
             .overlay {
                 if items.isEmpty && !showingSample {
                     ContentUnavailableView(senseFilter == nil ? "Waiting for events" : "No \(filterName ?? "") events",
@@ -246,43 +247,98 @@ struct EventRow: View {
     }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(Self.fmt.string(from: event.date)).font(.system(.subheadline, design: .monospaced))
-                Text(event.pattern.uppercased())
-                    .font(.caption.bold()).foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(patternColor(event.pattern), in: Capsule())
-                Text(subject).font(.subheadline.bold())
-                Spacer()
-                if event.quiet {
-                    Image(systemName: "moon.fill").font(.caption).foregroundStyle(.indigo)
-                        .accessibilityLabel("quiet: not felt")
+        HStack(alignment: .top, spacing: 10) {
+            EventThumb(event: event, size: 56)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(Self.fmt.string(from: event.date)).font(.system(.subheadline, design: .monospaced))
+                    Text(event.pattern.uppercased())
+                        .font(.caption.bold()).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(patternColor(event.pattern), in: Capsule())
+                    if event.paused { Tag(text: "paused", color: .orange) }
+                    Spacer(minLength: 0)
+                    if event.quiet {
+                        Image(systemName: "moon.fill").font(.caption).foregroundStyle(.indigo)
+                            .accessibilityLabel("quiet: not felt")
+                    }
+                    if let verdict {
+                        Image(systemName: verdict == .useful ? "hand.thumbsup.fill" : "speaker.slash.fill")
+                            .font(.caption).foregroundStyle(verdict == .useful ? .green : .orange)
+                    }
+                    if let ms = event.latencyMs {
+                        Text("\(Int(ms.rounded())) ms").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
                 }
-                if let verdict {
-                    Image(systemName: verdict == .useful ? "hand.thumbsup.fill" : "speaker.slash.fill")
-                        .font(.caption).foregroundStyle(verdict == .useful ? .green : .orange)
+                HStack(spacing: 4) {
+                    Image(systemName: sensorIcon).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(event.isRadar ? "radar" : "camera")
+                    Text(event.triggerLabel.isEmpty ? subject : event.triggerLabel)
+                        .font(.subheadline.bold()).lineLimit(1)
                 }
-                if let u = event.urgency {
-                    Text(String(format: "%.2f", u)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                // Haiku's one-line reason when the engine sends it; the engine's reason string stays in the detail JSON.
+                Text(event.why ?? (event.reason.isEmpty ? event.rule : event.reason))
+                    .font(.callout).foregroundStyle(.primary)
+                if let r = event.radar, !r.summary.isEmpty {
+                    Label(r.summary, systemImage: "dot.radiowaves.right")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.teal)
                 }
-            }
-            // Haiku's one-line reason when the engine sends it; the engine's reason string stays in the detail JSON.
-            Text(event.why ?? (event.reason.isEmpty ? event.rule : event.reason))
-                .font(.callout).foregroundStyle(.primary)
-            if !event.triggerLabel.isEmpty {
-                Label(event.triggerLabel, systemImage: "bolt.fill")
-                    .font(.caption2.bold()).foregroundStyle(.secondary)
-                    .labelStyle(.titleAndIcon)
-                    .accessibilityLabel("Trigger \(event.triggerLabel)")
+                if let t = event.trend {
+                    HStack(spacing: 6) {
+                        if !t.summary.isEmpty {
+                            Label(t.summary, systemImage: "timer").font(.caption.monospacedDigit()).foregroundStyle(.purple)
+                        }
+                        if t.touching { Tag(text: "touching", color: .red) }
+                    }
+                }
+                if !subject.isEmpty && !event.triggerLabel.isEmpty && !event.isRadar {
+                    Text(subject).font(.caption2).foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 
+    private var sensorIcon: String {
+        event.isRadar ? "dot.radiowaves.right" : (event.sensor == "camera" || event.thumb != nil ? "camera.fill" : "bolt.fill")
+    }
+
     private var subject: String {
-        [event.hazard, event.direction].compactMap { $0 }.joined(separator: " · ")
+        var parts = [event.hazard, event.direction].compactMap { $0 }.filter { !$0.isEmpty }
+        if let s = event.lookedAtSAgo { parts.append(String(format: "looked %.1f s ago", s)) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+struct Tag: View {
+    let text: String
+    let color: Color
+    var body: some View {
+        Text(text).font(.caption2.bold()).foregroundStyle(color)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(color.opacity(0.15), in: Capsule())
+    }
+}
+
+/// The frame that fired (camera) or a sensor tile (radar / no thumbnail).
+struct EventThumb: View {
+    let event: HapticEvent
+    let size: CGFloat
+    var body: some View {
+        Group {
+            if let img = event.thumb {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                Image(systemName: event.isRadar ? "dot.radiowaves.right" : "waveform")
+                    .font(.title2).foregroundStyle(event.isRadar ? Color.teal : patternColor(event.pattern))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background((event.isRadar ? Color.teal : patternColor(event.pattern)).opacity(0.12))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityLabel(event.thumb != nil ? "Frame thumbnail" : (event.isRadar ? "Radar event" : "Event"))
     }
 }
 
@@ -292,11 +348,25 @@ struct EventDetail: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(event.prettyJSON)
-                    .font(.system(.footnote, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+                VStack(alignment: .leading, spacing: 12) {
+                    if let img = event.thumb {
+                        Image(uiImage: img).resizable().scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .accessibilityLabel("Frame that fired, with the gaze dot and box")
+                    }
+                    if let r = event.radar, !r.summary.isEmpty {
+                        Label(r.summary, systemImage: "dot.radiowaves.right").font(.headline).foregroundStyle(.teal)
+                    }
+                    if let t = event.trend, !t.summary.isEmpty {
+                        Label(t.summary, systemImage: "timer").font(.subheadline).foregroundStyle(.purple)
+                    }
+                    Text(event.prettyJSON)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding()
             }
             .navigationTitle("Event #\(event.id)")
             .navigationBarTitleDisplayMode(.inline)

@@ -1,4 +1,4 @@
-# Status (updated 2026-10-10 18:28 PT)
+# Status (updated 2026-10-10 18:40 PT)
 
 One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 
@@ -16,14 +16,13 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 | Haiku latency (single path) | `bbee782` | frame→cue 0.92 s median / 1.20 s p90 on test scenes |
 | Radar client of radar-lab's :8090 server | `d4a05c2` | 10/10 tests with a fake server; radar-lab sim confirmed an approach |
 | Slides (16, dark) | `1ad1ae6` | `docs/deck/index.html` |
+| iOS v3 app: gaze-mode / over-time / radar trigger editor, 5 test templates, Log thumbnails + trend + radar, source/sink chips + pause, Radar & Neon cards, About | see git log | builds; verified live on fakes; radar/trend/Neon numbers shown from sample data until the engine side lands |
 | Haptic Playground (web) | | `./scripts/playground.sh` |
 
 ## In progress
 - **Vision v3:** gaze modes (looking at / unseen with noticed memory / either) from real gaze history vs Haiku's object box;
   temporal triggers (3 labelled frames per call + a relative trend memory: gap in body-heights, looming, closer/same/farther,
   touching); radar triggers in the engine; event thumbnails; pause; `status` message; desk test page + dry runs.
-- **iOS v3:** gaze-mode / over-time / radar settings in the trigger editor, templates for every test, Log thumbnails + trend +
-  radar details, source chip + pause switch, Radar/Neon device cards, About.
 
 ## Known issues
 - Bluetooth must run from Terminal.app (the Claude app has no Bluetooth permission → exit 134). Only one process can hold the El Jefe link.

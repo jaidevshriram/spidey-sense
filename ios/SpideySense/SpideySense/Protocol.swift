@@ -3,7 +3,7 @@ import Foundation
 // Wire protocol between the app and the Mac engine. Keep in sync with docs/protocol.md
 // and spidey/server.py + spidey/engine.py (Controller).
 //
-// server -> app: hello{history, rules, devices, settings}, event{..., trigger?, trigger_name?, why?}, rules.list{rules},
+// server -> app: hello{history, rules, devices, settings}, status{paused, source, radar, about} (v3), event{..., trigger?, trigger_name?, why?}, rules.list{rules},
 //                device.status{devices}, settings{quiet, intensity}, ack{for, ok, ms, ...}, error{error},
 //                haptic.telemetry{...}, link.pong{...}, system{ts, level, text}
 // app -> server: rules.upsert{rule}, rules.delete{id}, rules.reset{}, feedback{event_id, ts, verdict},
@@ -50,30 +50,80 @@ struct RuleCondition: Codable, Hashable {
     var hrWindowS: Double?      // median window, default 120 s
     var metric: String?         // Mac metric name, e.g. "cpu_temp_c"
     var valueGt: Double?        // fire when metric > this
+    var maxDistanceM: Double?   // radar: target within this many metres
+    var minSpeedMps: Double?    // radar: approaching faster than this
 
     enum CodingKeys: String, CodingKey {
         case unseen, seen, metric
         case minUrgency = "min_urgency", maxUrgency = "max_urgency"
         case hrBandBpm = "hr_band_bpm", hrWindowS = "hr_window_s", valueGt = "value_gt"
+        case maxDistanceM = "max_distance_m", minSpeedMps = "min_speed_mps"
+    }
+
+    init(unseen: Bool? = nil, seen: Bool? = nil, minUrgency: Double? = nil, maxUrgency: Double? = nil,
+         hrBandBpm: Double? = nil, hrWindowS: Double? = nil, metric: String? = nil, valueGt: Double? = nil,
+         maxDistanceM: Double? = nil, minSpeedMps: Double? = nil) {
+        self.unseen = unseen; self.seen = seen; self.minUrgency = minUrgency; self.maxUrgency = maxUrgency
+        self.hrBandBpm = hrBandBpm; self.hrWindowS = hrWindowS; self.metric = metric; self.valueGt = valueGt
+        self.maxDistanceM = maxDistanceM; self.minSpeedMps = minSpeedMps
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        unseen = c.lenient(Bool.self, .unseen); seen = c.lenient(Bool.self, .seen)
+        minUrgency = c.lenient(Double.self, .minUrgency); maxUrgency = c.lenient(Double.self, .maxUrgency)
+        hrBandBpm = c.lenient(Double.self, .hrBandBpm); hrWindowS = c.lenient(Double.self, .hrWindowS)
+        metric = c.lenient(String.self, .metric); valueGt = c.lenient(Double.self, .valueGt)
+        maxDistanceM = c.lenient(Double.self, .maxDistanceM); minSpeedMps = c.lenient(Double.self, .minSpeedMps)
+    }
+}
+
+/// v3 gaze mode: when a camera trigger may fire relative to where the wearer is looking.
+enum GazeMode: String, CaseIterable, Identifiable, Codable {
+    case unseen, lookingAt = "looking_at", any
+    var id: String { rawValue }
+    var label: String {
+        switch self { case .unseen: "Haven't looked at it"; case .lookingAt: "Looking at it"; case .any: "Either" }
+    }
+    var short: String {
+        switch self { case .unseen: "unseen"; case .lookingAt: "looking"; case .any: "either" }
+    }
+}
+
+/// v3.3 temporal trend settings: fire on a consistent trend for `ticks` ticks; high sensitivity = smaller changes count.
+struct TrendConfig: Codable, Hashable {
+    var ticks: Int = 3
+    var sensitivity: String = "medium"   // low | medium | high
+
+    init(ticks: Int = 3, sensitivity: String = "medium") { self.ticks = ticks; self.sensitivity = sensitivity }
+
+    enum CodingKeys: String, CodingKey { case ticks, sensitivity }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ticks = c.lenient(Int.self, .ticks) ?? c.lenient(Double.self, .ticks).map { Int($0) } ?? 3
+        sensitivity = c.lenient(String.self, .sensitivity) ?? "medium"
     }
 }
 
 enum SenseSource: String, CaseIterable, Identifiable, Codable {
-    case neon, heartRate = "heart_rate", macMetric = "mac_metric", manual
+    case neon, radar, heartRate = "heart_rate", macMetric = "mac_metric", manual
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .neon: "Neon vision"; case .heartRate: "Heart rate"
+        case .neon: "Neon vision"; case .radar: "Radar"; case .heartRate: "Heart rate"
         case .macMetric: "Mac metric"; case .manual: "Manual"
         }
     }
     var icon: String {
         switch self {
-        case .neon: "eye"; case .heartRate: "heart"; case .macMetric: "desktopcomputer"; case .manual: "hand.tap"
+        case .neon: "eye"; case .radar: "dot.radiowaves.right"; case .heartRate: "heart"
+        case .macMetric: "desktopcomputer"; case .manual: "hand.tap"
         }
     }
-    /// Only Neon vision feeds the engine today; the rest are stubs on the Mac side.
-    var isWired: Bool { self == .neon }
+    /// Neon vision and radar feed the engine; the rest are stubs on the Mac side.
+    var isWired: Bool { self == .neon || self == .radar }
+    /// Sources offered by the built-in condition builder (radar has its own editor).
+    static var builtinCases: [SenseSource] { allCases.filter { $0 != .radar } }
 }
 
 struct SenseRule: Codable, Identifiable, Hashable {
@@ -91,10 +141,15 @@ struct SenseRule: Codable, Identifiable, Hashable {
     var describe: String?       // custom only: plain-English description judged by Haiku
     var intensity: Double?      // 0...1 per-trigger vibration strength; nil = 100 %
     var rgb: [Int]?             // LED colour override [r, g, b]
+    // v3 (docs/protocol.md "v3" / "v3.3"). All optional: older engines omit or drop them.
+    var gazeMode: String?       // unseen | looking_at | any; nil = derive from if.unseen
+    var noticeMemoryS: Double?  // unseen: stay quiet this long after the gaze leaves it
+    var temporal: Bool?         // compare the last ~1.4 s of frames
+    var trend: TrendConfig?     // temporal only
 
     enum CodingKeys: String, CodingKey {
-        case id, name, enabled, source, when, feel, dot, kind, describe, intensity, rgb
-        case cond = "if", cooldownS = "cooldown_s"
+        case id, name, enabled, source, when, feel, dot, kind, describe, intensity, rgb, temporal, trend
+        case cond = "if", cooldownS = "cooldown_s", gazeMode = "gaze_mode", noticeMemoryS = "notice_memory_s"
     }
 
     init(id: String, name: String, enabled: Bool = true, source: String = "neon", when: RuleWhen = .any,
@@ -121,6 +176,10 @@ struct SenseRule: Codable, Identifiable, Hashable {
         describe = c.lenient(String.self, .describe)
         intensity = c.lenient(Double.self, .intensity)
         rgb = c.lenient([Int].self, .rgb).flatMap { $0.count == 3 ? $0 : nil }
+        gazeMode = c.lenient(String.self, .gazeMode)
+        noticeMemoryS = c.lenient(Double.self, .noticeMemoryS)
+        temporal = c.lenient(Bool.self, .temporal)
+        trend = c.lenient(TrendConfig.self, .trend)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -134,6 +193,10 @@ struct SenseRule: Codable, Identifiable, Hashable {
         try c.encodeIfPresent(describe, forKey: .describe)
         try c.encodeIfPresent(intensity, forKey: .intensity)
         try c.encodeIfPresent(rgb, forKey: .rgb)
+        try c.encodeIfPresent(gazeMode, forKey: .gazeMode)
+        try c.encodeIfPresent(noticeMemoryS, forKey: .noticeMemoryS)
+        try c.encodeIfPresent(temporal, forKey: .temporal)
+        try c.encodeIfPresent(trend, forKey: .trend)
     }
 
     var senseSource: SenseSource? { SenseSource(rawValue: source) }
@@ -142,6 +205,17 @@ struct SenseRule: Codable, Identifiable, Hashable {
     var isCustom: Bool { kind == "custom" || (kind == nil && !(describe ?? "").isEmpty) }
     /// The extra trigger fields an older engine may drop from its echo.
     var hasTriggerExtras: Bool { kind != nil || describe != nil || intensity != nil || rgb != nil }
+    /// The v3 fields an engine without v3 support drops from its echo.
+    var hasV3Extras: Bool { gazeMode != nil || noticeMemoryS != nil || temporal != nil || trend != nil }
+
+    var isRadar: Bool { source == SenseSource.radar.rawValue }
+    /// Gaze mode with back-compat: missing => if.unseen ? unseen : any. Radar is always unseen.
+    var effectiveGazeMode: GazeMode {
+        if isRadar { return .unseen }
+        if let g = gazeMode.flatMap(GazeMode.init(rawValue:)) { return g }
+        return cond.unseen == true ? .unseen : .any
+    }
+    var isTemporal: Bool { temporal ?? false }
 }
 
 // MARK: - Devices and settings
@@ -156,10 +230,168 @@ struct DeviceInfo: Codable, Identifiable, Hashable {
     var sink: String?
     var lastSeen: Double?       // unix seconds
     var link: LinkInfo? = nil   // el_jefe only: live link check from the engine
+    // v3 card extras (neon: fps/gaze Hz/worn/battery/delay; radar: url/mode/last/rate). All lenient.
+    var source: SourceStatus? = nil
+    var radar: RadarStatus? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, kind, status, detail, transport, sink, link
+        case id, name, kind, status, detail, transport, sink, link, stats
         case lastSeen = "last_seen"
+    }
+
+    init(id: String, name: String, kind: String, status: String, detail: String? = nil, transport: String? = nil,
+         sink: String? = nil, lastSeen: Double? = nil, link: LinkInfo? = nil,
+         source: SourceStatus? = nil, radar: RadarStatus? = nil) {
+        self.id = id; self.name = name; self.kind = kind; self.status = status; self.detail = detail
+        self.transport = transport; self.sink = sink; self.lastSeen = lastSeen; self.link = link
+        self.source = source; self.radar = radar
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.lenient(String.self, .id) ?? "device"
+        name = c.lenient(String.self, .name) ?? id
+        kind = c.lenient(String.self, .kind) ?? ""
+        status = c.lenient(String.self, .status) ?? "disconnected"
+        detail = c.lenient(String.self, .detail); transport = c.lenient(String.self, .transport)
+        sink = c.lenient(String.self, .sink); lastSeen = c.lenient(Double.self, .lastSeen)
+        link = c.lenient(LinkInfo.self, .link)
+        // The card's own keys may carry the v3 numbers (flat), so decode them from the same object.
+        if id == "neon" { source = c.lenient(SourceStatus.self, .stats) ?? (try? SourceStatus(from: decoder)) }
+        if id == "radar" { radar = try? RadarStatus(from: decoder) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(name, forKey: .name); try c.encode(kind, forKey: .kind)
+        try c.encode(status, forKey: .status); try c.encodeIfPresent(detail, forKey: .detail)
+        try c.encodeIfPresent(transport, forKey: .transport); try c.encodeIfPresent(sink, forKey: .sink)
+        try c.encodeIfPresent(lastSeen, forKey: .lastSeen); try c.encodeIfPresent(link, forKey: .link)
+    }
+}
+
+// MARK: - v3 status (server -> app `status`, on connect, every 2 s and on change)
+
+/// `status.source`: the camera feed.
+struct SourceStatus: Decodable, Hashable {
+    var type: String?           // neon | fake
+    var live: Bool?
+    var fps: Double?
+    var gazeHz: Double?
+    var worn: Bool?
+    var battery: Double?        // %
+    var delayMs: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case type, live, fps, worn, battery
+        case gazeHz = "gaze_hz", delayMs = "delay_ms"
+    }
+
+    init(type: String? = nil, live: Bool? = nil, fps: Double? = nil, gazeHz: Double? = nil, worn: Bool? = nil,
+         battery: Double? = nil, delayMs: Double? = nil) {
+        self.type = type; self.live = live; self.fps = fps; self.gazeHz = gazeHz; self.worn = worn
+        self.battery = battery; self.delayMs = delayMs
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = c.lenient(String.self, .type); live = c.lenient(Bool.self, .live); fps = c.lenient(Double.self, .fps)
+        gazeHz = c.lenient(Double.self, .gazeHz); worn = c.lenient(Bool.self, .worn)
+        battery = c.lenient(Double.self, .battery); delayMs = c.lenient(Double.self, .delayMs)
+    }
+
+    var isFake: Bool { type == "fake" }
+}
+
+/// One radar reading: `status.radar.last` and an event's `radar`.
+struct RadarReading: Decodable, Hashable {
+    var distanceM: Double?
+    var speedMps: Double?
+    var angleDeg: Double?
+    var side: String?           // left | right | center
+    var ts: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case side, ts
+        case distanceM = "distance_m", speedMps = "speed_mps", angleDeg = "angle_deg"
+    }
+
+    init(distanceM: Double? = nil, speedMps: Double? = nil, angleDeg: Double? = nil, side: String? = nil, ts: Double? = nil) {
+        self.distanceM = distanceM; self.speedMps = speedMps; self.angleDeg = angleDeg; self.side = side; self.ts = ts
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        distanceM = c.lenient(Double.self, .distanceM); speedMps = c.lenient(Double.self, .speedMps)
+        angleDeg = c.lenient(Double.self, .angleDeg); side = c.lenient(String.self, .side); ts = c.lenient(Double.self, .ts)
+    }
+
+    init?(_ d: [String: Any]?) {
+        guard let d else { return nil }
+        func num(_ k: String) -> Double? { (d[k] as? NSNumber)?.doubleValue }
+        self.init(distanceM: num("distance_m"), speedMps: num("speed_mps"), angleDeg: num("angle_deg"),
+                  side: d["side"] as? String, ts: num("ts"))
+    }
+
+    /// "1.4 m · 0.6 m/s · left"
+    var summary: String {
+        [distanceM.map { String(format: "%.1f m", $0) }, speedMps.map { String(format: "%.1f m/s", $0) },
+         side ?? angleDeg.map { String(format: "%.0f°", $0) }].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// `status.radar` (null when no radar is configured).
+struct RadarStatus: Decodable, Hashable {
+    var connected: Bool?
+    var url: String?
+    var mode: String?           // board | sim
+    var last: RadarReading?
+    var rateHz: Double?
+    var lastTs: Double?         // unix s of the last reading, if the engine sends it
+    var sinceLastS: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case connected, url, mode, last
+        case rateHz = "rate_hz", lastTs = "last_ts", sinceLastS = "since_last_s"
+    }
+
+    init(connected: Bool? = nil, url: String? = nil, mode: String? = nil, last: RadarReading? = nil,
+         rateHz: Double? = nil, lastTs: Double? = nil, sinceLastS: Double? = nil) {
+        self.connected = connected; self.url = url; self.mode = mode; self.last = last
+        self.rateHz = rateHz; self.lastTs = lastTs; self.sinceLastS = sinceLastS
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        connected = c.lenient(Bool.self, .connected); url = c.lenient(String.self, .url)
+        mode = c.lenient(String.self, .mode); last = c.lenient(RadarReading.self, .last)
+        rateHz = c.lenient(Double.self, .rateHz); lastTs = c.lenient(Double.self, .lastTs)
+        sinceLastS = c.lenient(Double.self, .sinceLastS)
+    }
+}
+
+/// `status.about`: what the engine is running.
+struct AboutInfo: Decodable, Hashable {
+    var config: String?
+    var model: String?
+    var commit: String?
+    var sink: String?
+}
+
+struct StatusMessage: Decodable, Hashable {
+    var paused: Bool?
+    var source: SourceStatus?
+    var radar: RadarStatus?
+    var about: AboutInfo?
+
+    enum CodingKeys: String, CodingKey { case paused, source, radar, about }
+    init(paused: Bool? = nil, source: SourceStatus? = nil, radar: RadarStatus? = nil, about: AboutInfo? = nil) {
+        self.paused = paused; self.source = source; self.radar = radar; self.about = about
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        paused = c.lenient(Bool.self, .paused); source = c.lenient(SourceStatus.self, .source)
+        radar = c.lenient(RadarStatus.self, .radar); about = c.lenient(AboutInfo.self, .about)
     }
 }
 
@@ -215,6 +447,7 @@ struct HelloMessage: Decodable {
     var rules: [SenseRule]?     // nil from engines older than this protocol
     var devices: [DeviceInfo]?
     var settings: EngineSettings?
+    var status: StatusMessage?  // v3: the first `status`, inlined
 }
 struct RulesListMessage: Decodable { var rules: [SenseRule] }
 struct DeviceStatusMessage: Decodable { var devices: [DeviceInfo] }
@@ -368,7 +601,7 @@ struct FeedbackMessage: Encodable {
     enum CodingKeys: String, CodingKey { case type, ts, verdict, eventId = "event_id" }
 }
 
-enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", setIntensity = "set_intensity", quiet }
+enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", setIntensity = "set_intensity", quiet, pause }
 
 /// Small JSON value for command args.
 enum JSONValue: Encodable, Hashable {
@@ -393,6 +626,8 @@ struct CommandMessage: Encodable {
     static let stopAll = Self(name: .stopAll)
     static func setIntensity(_ v: Double) -> Self { .init(name: .setIntensity, args: ["value": .number(v)]) }
     static func quiet(_ on: Bool) -> Self { .init(name: .quiet, args: ["on": .bool(on)]) }
+    /// v3: while paused, detection keeps running for the Log but nothing reaches the Dot.
+    static func pause(_ on: Bool) -> Self { .init(name: .pause, args: ["on": .bool(on)]) }
 }
 
 // MARK: - Haptics tab (app -> server). Each gets an `ack` with `for`, `ok`, `ms`.

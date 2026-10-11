@@ -42,6 +42,7 @@ struct HapticsView: View {
                 .padding()
             }
             .safeAreaInset(edge: .bottom) { stopBar }
+            .engineHeader(stream)
             .navigationTitle("Haptics")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { StatusDot(status: stream.status) } }
