@@ -108,7 +108,7 @@ and press Run. Phone and Mac on the same Wi-Fi is the only assumption:
 - The app finds the engine by itself: a custom URL (if you set one) → **Bonjour** (the engine advertises
   `_spidey._tcp`) → the Mac's IP stamped into the build → `127.0.0.1` in the simulator. It re-searches after a drop.
 - Pressing Run also starts the demo engine (fakes, console) if nothing is listening on 8765. Bluetooth runs still go via Terminal.
-- On a real iPhone, pick your signing team once and allow Local Network on first launch.
+- On a real iPhone: the team is preset (F9KC623A2R). Plug in once, pick the iPhone, Run, allow Local Network; tick "Connect via network" in Xcode → Devices for wireless installs. The phone must be on the same Wi-Fi as the Mac (at the venue: the Neon phone's hotspot).
 
 Tabs: **Log** (why each buzz fired + link-drop system rows) · **Senses** (rules) · **Devices** (live El Jefe health) ·
 **Haptics** (Link check: Phone→Mac / Mac→El Jefe / El Jefe→Dot with ms, Ping all; light, vibration, thermal with a live

@@ -402,3 +402,12 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 ### 19:00 Radar off for now (Jaidev)
 - `config.desk.yaml` has `radar.enabled: false`; `config.desk_radar.yaml` = the same config with radar on. The engine reports the radar
   card as `status: "off"`, and the app shows "Off" in gray (not red). Verified: the desk config starts with no radar logs, retries or errors.
+
+### 19:05 App on Jaidev's iPhone + app icon
+- Signing: `DEVELOPMENT_TEAM: F9KC623A2R` (Jaidev's team, OK'd by asking for the app on the phone) + automatic signing in
+  `ios/SpideySense/project.yml`. `xcodebuild -destination id=<Riptide UDID> -allowProvisioningUpdates build` → **BUILD SUCCEEDED**
+  ("Apple Development: jaidevtrumpet@gmail.com"); `xcrun devicectl device install app` + `process launch` → running on "Riptide" (iPhone 15).
+- The phone reached the engine immediately over the USB cable's link-local network (169.254.x) via Bonjour; with the cable out
+  it needs the same Wi-Fi as the Mac (the Neon phone's hotspot).
+- App icon: a spider web (8 spokes, 4 sagging rings, red centre dot) on a dark red-black gradient; source `ios/SpideySense/design/app_icon.svg`,
+  rendered to an opaque 1024 PNG in `Assets.xcassets/AppIcon.appiconset`.

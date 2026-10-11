@@ -29,6 +29,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: F9KC623A2R          # Jaidev's team (same as CaltrainWidgetApp)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_USER_SCRIPT_SANDBOXING: NO   # the IP stamp writes into the built Info.plist
     postBuildScripts:
       - name: Stamp Mac IP

@@ -1,4 +1,4 @@
-# Status (updated 2026-10-10 19:00 PT)
+# Status (updated 2026-10-10 19:06 PT)
 
 One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 
@@ -19,6 +19,7 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 | iOS v3 app: gaze-mode / over-time / radar trigger editor, 5 test templates, Log thumbnails + trend + radar, source/sink chips + pause, Radar & Neon cards, About | see git log | builds; verified live on fakes; radar/trend/Neon numbers shown from sample data until the engine side lands |
 | Engine v3: gaze modes from real gaze history vs Haiku boxes, notice memory, temporal triggers (3 frames + relative trend memory), radar triggers, thumbnails, pause, status | this push | desk dry runs A–D all pass; `./scripts/desk_test.sh check` all pass |
 | Radar on radar-lab protocol v2 (debounced state, mount-aware `where`, 0.5 s fail-safe) | this push | approach → 1 fire; two_people walk-by ignored; ~4 ms server→sense |
+| App on Jaidev's iPhone ("Riptide") with a spider-web icon | this push | signed with his team; connects to the engine via Bonjour |
 | Haptic Playground (web) | | `./scripts/playground.sh` |
 
 ## In progress
