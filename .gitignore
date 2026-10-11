@@ -20,3 +20,4 @@ xcuserdata/
 # misc
 *.zip
 .DS_Store
+backend/triggers*.json

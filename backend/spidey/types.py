@@ -31,6 +31,8 @@ class Detection:
     urgency: float              # 0..1
     latency_ms: float = 0.0     # time the detector took
     raw: dict = field(default_factory=dict)
+    reason: str = ""            # detector's one-line explanation (Haiku)
+    triggers: dict = field(default_factory=dict)  # custom trigger id -> {match, urgency, x, seen_by_user, reason}
 
 
 @dataclass
@@ -40,3 +42,7 @@ class HapticEvent:
     reason: str
     ts: float
     rule: str = ""
+    trigger_name: str = ""
+    why: str = ""               # Haiku's one-line reason
+    intensity: float | None = None   # per-trigger strength (x master intensity)
+    rgb: list | None = None          # per-trigger LED colour

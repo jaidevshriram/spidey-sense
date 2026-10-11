@@ -11,7 +11,7 @@ detector:
   type: vlm
   model: claude-haiku-5-5
   max_side: 512
-  max_tokens: 150
+  max_tokens: 200
   min_interval_s: 0.5           # at most 2 calls/s; stale frames are dropped
   env_file: ../../.env          # repo-root .env (relative to this file); only if ANTHROPIC_API_KEY is unset
 

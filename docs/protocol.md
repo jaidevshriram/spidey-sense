@@ -111,3 +111,35 @@ as an engine using a DataFeel sink: only one process can hold the BLE link.
   `reason` is a human sentence, e.g. "BLE: link to DataFeelCE is down. Is El Jefe on and in range?"
 - `system`: `{ts, level: info|warning|error, text}` for link lost/restored, thermal safety cut-offs. Show in the Log as system rows.
 - The El Jefe card in `device.status` is now real: `status` connected/disconnected from a register read every 2 s.
+
+## Triggers: plain-English custom triggers (added 17:58)
+
+**One source of truth:** `backend/triggers.json`, owned by the engine. It's seeded once from the config's `rules:`
+(or the built-in defaults) if missing; after that, config `rules:` are ignored, and the engine prints and echoes the active
+set (`hello.rules`, `rules.list` after every change). The app's "senses" are these triggers.
+
+Trigger (= rule) JSON, extending the Rule section above:
+```jsonc
+{
+  "id": "knife_near", "name": "Knife nearby", "enabled": true,
+  "kind": "custom",             // "builtin" (hazard/urgency logic) | "custom" (judged by Haiku from `describe`)
+  "describe": "warn me if someone holding a knife is near and I haven't looked at them",   // custom only
+  "source": "neon",
+  "when": "any", "if": {"unseen": true, "min_urgency": 0.5},     // unseen = "only if I haven't looked at it"
+  "feel": "urgent",             // urgent | pulse | ambient | custom pattern key
+  "intensity": 0.8,             // optional per-trigger vibration strength 0..1 (multiplies master intensity)
+  "rgb": [255, 0, 0],           // optional LED colour override
+  "dot": null, "cooldown_s": 3
+}
+```
+Custom triggers are evaluated by the **same single Haiku call** that detects hazards: enabled custom
+triggers are appended to the prompt, and Haiku returns per trigger id
+`{"match": bool, "urgency": 0-1, "x": 0-1, "seen_by_user": bool, "reason": "one line"}`. A custom trigger fires when
+`match` and `urgency >= if.min_urgency` and (if `if.unseen`) not seen, subject to cooldown.
+
+Event additions: `trigger` (the trigger id that fired), `trigger_name`, `why` (Haiku's one-line reason; for
+built-ins the overall scene reason). `rule`/`reason` are kept for compatibility.
+
+App -> server additions:
+- `rules.upsert` / `rules.delete` (unchanged), and the toggle = upsert with `enabled` flipped. The engine persists to triggers.json and broadcasts `rules.list`.
+- `rules.reset` `{}`: restore the default triggers (blindspot + heads_up); replies `rules.list`.

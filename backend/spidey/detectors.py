@@ -56,14 +56,24 @@ class VLMDetector(Detector):
         "You are a 'spidey sense' for the person wearing this camera. The red dot is where they "
         "are looking. Is there a hazard (something moving toward them, an obstacle, a vehicle, "
         "a sharp or dangerous object)? Reply with strict JSON only, no prose: "
-        '{"hazard": string|null, "x": number 0-1, "seen_by_user": bool, "urgency": number 0-1}. '
+        '{"hazard": string|null, "x": number 0-1, "seen_by_user": bool, "urgency": number 0-1, '
+        '"reason": string}. '
         "x is the horizontal centre of the hazard in the image (0 = left edge, 1 = right edge). "
         "seen_by_user is true if the red dot is on or near the hazard. "
+        "reason is one short sentence (under 15 words) on what you see and why it matters. "
         "Use null hazard and urgency 0 when nothing is dangerous."
+    )
+    TRIGGERS_PROMPT = (
+        "\nThe wearer also defined these custom triggers. Judge each one on this image and add a "
+        '"triggers" object to the same JSON, keyed by trigger id: '
+        '{"<id>": {"match": bool, "urgency": number 0-1, "x": number 0-1, "seen_by_user": bool, '
+        '"reason": string}}. match is true only if the image clearly shows what the trigger describes. '
+        'For a trigger that does not match, return only {"match": false}. Keep each reason under 15 words. '
+        "Triggers:\n"
     )
 
     def __init__(self, model: str = "claude-haiku-5-5", max_side: int = 512,
-                 max_tokens: int = 150, min_interval_s: float = 0.0, env_file: str | None = None):
+                 max_tokens: int = 200, min_interval_s: float = 0.0, env_file: str | None = None):
         import os
         import anthropic
 
@@ -76,6 +86,7 @@ class VLMDetector(Detector):
         self.client = anthropic.Anthropic(max_retries=1, timeout=10.0)
         self.model, self.max_side, self.max_tokens = model, max_side, max_tokens
         self.min_interval_s = min_interval_s
+        self.triggers: list[tuple[str, str]] = []   # (id, plain-English description), set by the engine
         self._pending: Frame | None = None
         self._result: Detection | None = None
         self._cv = threading.Condition()
@@ -96,24 +107,37 @@ class VLMDetector(Detector):
         ok, jpg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return base64.b64encode(jpg.tobytes()).decode()
 
+    def set_triggers(self, triggers: list[tuple[str, str]]) -> None:
+        """Enabled custom triggers to judge in the same call (engine calls this on every change)."""
+        self.triggers = list(triggers)
+
+    def prompt(self) -> str:
+        trig = self.triggers
+        if not trig:
+            return self.PROMPT
+        lines = "\n".join(f'- id "{tid}": {desc.strip()}' for tid, desc in trig)
+        return self.PROMPT + self.TRIGGERS_PROMPT + lines
+
     def call(self, frame: Frame) -> Detection:
-        """One blocking model call for one frame."""
+        """One blocking model call for one frame (hazards + every custom trigger together)."""
         t0 = time.perf_counter()
+        trig = list(self.triggers)
         resp = self.client.messages.create(
             model=self.model,
-            max_tokens=self.max_tokens,
+            max_tokens=self.max_tokens + 60 * len(trig),
             thinking={"type": "disabled"},          # speed over deliberation
             output_config={"effort": "low"},
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                              "data": self.prepare(frame)}},
-                {"type": "text", "text": self.PROMPT},
+                {"type": "text", "text": self.prompt()},
             ]}],
         )
         latency = (time.perf_counter() - t0) * 1000
         text = "".join(b.text for b in resp.content if b.type == "text")
         raw = {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "text": text,
-               "stop_reason": resp.stop_reason}
+               "stop_reason": resp.stop_reason, "n_triggers": len(trig),
+               "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens}
         data = parse_json(text)
         if data is None:
             return Detection(None, None, False, 0.0, latency, raw | {"parse_error": True})
@@ -123,8 +147,18 @@ class VLMDetector(Detector):
         except (TypeError, ValueError):
             urgency = 0.0
         where = (where_from_x(data.get("x")) or data.get("where")) if hazard else None
-        return Detection(hazard, where,
-                         bool(data.get("seen_by_user")), urgency if hazard else 0.0, latency, raw)
+        triggers = {}
+        for tid, t in (data.get("triggers") or {}).items():
+            if isinstance(t, dict):
+                try:
+                    u = max(0.0, min(1.0, float(t.get("urgency") or 0)))
+                except (TypeError, ValueError):
+                    u = 0.0
+                triggers[str(tid)] = {"match": bool(t.get("match")), "urgency": u,
+                                      "where": where_from_x(t.get("x")), "seen_by_user": bool(t.get("seen_by_user")),
+                                      "reason": str(t.get("reason") or "")[:200]}
+        return Detection(hazard, where, bool(data.get("seen_by_user")), urgency if hazard else 0.0, latency, raw,
+                         reason=str(data.get("reason") or "")[:200], triggers=triggers)
 
     def _worker(self):
         import anthropic

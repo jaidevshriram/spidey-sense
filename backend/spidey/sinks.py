@@ -9,7 +9,9 @@ class HapticSink:
     and link check use: real dots for DataFeel sinks, mock dots for the console sink."""
     control = None
 
-    def play(self, pattern: str, dot: int | None = None) -> None:
+    def play(self, pattern: str, dot: int | None = None, intensity: float | None = None,
+             rgb: list | None = None) -> None:
+        """intensity: per-trigger strength (x master intensity); rgb: LED colour override."""
         raise NotImplementedError
 
     def close(self) -> None:
@@ -22,9 +24,10 @@ class ConsoleSink(HapticSink):
         from .haptic_control import HapticControl
         self.control = HapticControl.mocked()   # lets the app's Haptics tab work without hardware
 
-    def play(self, pattern, dot=None):
+    def play(self, pattern, dot=None, intensity=None, rgb=None):
+        eff = self.control.intensity * (1.0 if intensity is None else intensity)
         print(f"  >>> HAPTIC {pattern} on {'all dots' if dot is None else f'dot {dot}'}"
-              f" (intensity {self.control.intensity:.2f})", flush=True)
+              f" (intensity {eff:.2f}{f', led {rgb}' if rgb else ''})", flush=True)
 
 
 class DataFeelSink(HapticSink):
@@ -54,13 +57,15 @@ class DataFeelSink(HapticSink):
         self.cooldown_s = cooldown_s
         self._last: dict[str, float] = {}
 
-    def play(self, pattern, dot=None):
+    def play(self, pattern, dot=None, intensity=None, rgb=None):
         now = time.time()
         if now - self._last.get(pattern, 0) < self.cooldown_s:
             return
         self._last[pattern] = now
-        seq, rgb = self.sh.PATTERNS[pattern]
-        r = self.control.play_pattern(pattern, seq, rgb, None if dot is None else dot - 1)
+        seq, default_rgb = self.sh.PATTERNS[pattern]
+        r = self.control.play_pattern(pattern, seq, tuple(rgb) if rgb else default_rgb,
+                                      None if dot is None else dot - 1,
+                                      1.0 if intensity is None else intensity)
         if not r["ok"]:
             print(f"  !!! haptic {pattern} failed: {r['error']}", flush=True)
 

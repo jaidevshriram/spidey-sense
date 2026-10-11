@@ -56,28 +56,36 @@ class Controller:
         self.last_frame_ts: float | None = None
         self.last_play_ts: float | None = None
         self.server: EventServer | None = None
+        self.detector = None                 # set by run(): receives custom triggers for its prompt
+        # One source of truth: the triggers file. Seeded once (config rules, else defaults); after that
+        # config `rules:` are ignored and the file (edited live by the app) wins.
         if rules_path.exists():
             try:
                 saved = json.loads(rules_path.read_text()).get("rules") or []
-                self.rules = R.load_rules(saved) if saved else []   # empty file = no rules, not defaults
-                print(f"rules: loaded {len(self.rules)} from {rules_path}")
+                self.rules = R.load_rules(saved) if saved else []   # empty file = no triggers, not defaults
+                src = f"{rules_path.name}"
             except (ValueError, OSError) as e:
-                print(f"rules: could not read {rules_path} ({e}); using config.yaml")
-                self.rules = R.load_rules(cfg.get("rules"))
+                print(f"triggers: could not read {rules_path} ({e}); using defaults")
+                self.rules, src = R.load_rules(cfg.get("rules")), "defaults (file unreadable)"
         else:
             self.rules = R.load_rules(cfg.get("rules"))
+            src = "config rules (seeded)" if cfg.get("rules") else "defaults (seeded)"
+            self._save_rules()
+        print(f"triggers ({src}, {rules_path}): "
+              + ", ".join(f"{r.id}{'' if r.enabled else ' [off]'}{' [custom]' if r.kind == 'custom' else ''}"
+                          for r in self.rules), flush=True)
 
     # ---- used by the engine loop -------------------------------------------------------
     def active_rules(self) -> list[R.Rule]:
         with self.lock:
             return [r for r in self.rules if r.enabled]
 
-    def play(self, pattern: str, dot: int | None) -> bool:
+    def play(self, pattern: str, dot: int | None, intensity: float | None = None, rgb=None) -> bool:
         """Play unless quiet. Returns True if it reached the sink."""
         if self.quiet:
             return False
         with self.sink_lock:
-            self.sink.play(pattern, dot)
+            self.sink.play(pattern, dot, intensity, rgb)
         self.last_play_ts = time.time()
         return True
 
@@ -134,7 +142,20 @@ class Controller:
         tmp.write_text(json.dumps({"rules": [r.to_dict() for r in self.rules]}, indent=2) + "\n")
         tmp.replace(self.rules_path)
 
+    def push_triggers(self) -> None:
+        """Hand the enabled custom triggers to the VLM so they're judged in its single call."""
+        if self.detector is not None and hasattr(self.detector, "set_triggers"):
+            with self.lock:
+                self.detector.set_triggers(R.custom_triggers(self.rules))
+
+    def on_reset(self, msg: dict) -> dict:
+        with self.lock:
+            self.rules = [R.rule_from_dict(r.to_dict()) for r in R.DEFAULT_RULES]
+            self._rules_changed()
+        return self.rules_list()
+
     def _rules_changed(self) -> None:
+        self.push_triggers()
         self._save_rules()
         if self.server:
             self.server.broadcast(self.rules_list())
@@ -218,6 +239,7 @@ class Controller:
         server.hello_extra = self.hello_extra
         server.on("rules.upsert", self.on_upsert)
         server.on("rules.delete", self.on_delete)
+        server.on("rules.reset", self.on_reset)
         server.on("feedback", self.on_feedback)
         server.on("command", self.on_command)
         server.add_periodic(5.0, self.device_status)
@@ -276,8 +298,10 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
     detector = make_detector(cfg.get("detector", {}))
     sink = make_sink(cfg.get("sink", {}))
     ctl = Controller(cfg, sink, (cfg.get("source") or {}).get("type", "fake"),
-                     rules_path=ROOT / cfg.get("rules_file", "rules.json"),
+                     rules_path=ROOT / cfg.get("rules_file", "triggers.json"),
                      feedback_path=ROOT / cfg.get("feedback_log", "logs/feedback.jsonl"))
+    ctl.detector = detector
+    ctl.push_triggers()
     every = cfg.get("detect_every_s", 0)  # throttle slow detectors (e.g. a VLM)
     srv_cfg = cfg.get("server", {"enabled": True})
     server = EventServer(port=srv_cfg.get("port", 8765)) if srv_cfg.get("enabled", True) else None
@@ -320,14 +344,15 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                 for e in events:
                     print(f"[{t_detected - t_start:5.1f}s] -> {e.pattern} ({e.reason})"
                           f"{' [quiet: not played]' if quiet else ''}", flush=True)
-                    ctl.play(e.pattern, e.dot)
+                    ctl.play(e.pattern, e.dot, e.intensity, e.rgb)
                 t_done = time.time()
                 for e in events:
                     n_events += 1
                     if server:
                         ev = {
                             "id": n_events, "ts": e.ts, "pattern": e.pattern, "dot": e.dot,
-                            "rule": e.rule, "reason": e.reason,
+                            "rule": e.rule, "reason": e.reason, "trigger": e.rule,
+                            "trigger_name": e.trigger_name, "why": e.why,
                             "detection": {"hazard": det.hazard, "where": det.where,
                                           "seen_by_user": det.seen_by_user, "urgency": det.urgency},
                             "latency_ms": round((t_done - frame_ts) * 1000, 1),
@@ -343,7 +368,8 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                     "detection": {"hazard": det.hazard, "where": det.where,
                                   "seen_by_user": det.seen_by_user, "urgency": det.urgency,
                                   "latency_ms": round(det.latency_ms, 2), "raw": det.raw},
-                    "events": [{"pattern": e.pattern, "dot": e.dot, "reason": e.reason,
+                    "events": [{"pattern": e.pattern, "dot": e.dot, "reason": e.reason, "trigger": e.rule,
+                                "why": e.why,
                                 **({"quiet": True} if quiet else {})} for e in events],
                     "e2e_ms": round((t_done - frame_ts) * 1000, 2),
                 }) + "\n")

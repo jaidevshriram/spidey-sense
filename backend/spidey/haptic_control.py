@@ -169,9 +169,10 @@ class HapticControl:
         return {"ok": ok, "ms": ms, "error": err, "cmd": name}
 
     # ---- patterns (engine + app presets) -------------------------------------------------
-    def play_pattern(self, name: str, seq, rgb, dot_index: int | None = None) -> dict:
-        """dot_index: 0-based position in self.dots (engine rules), None = all."""
-        scaled = scale_sequence(seq, self.intensity)
+    def play_pattern(self, name: str, seq, rgb, dot_index: int | None = None, scale: float = 1.0) -> dict:
+        """dot_index: 0-based position in self.dots (engine rules), None = all.
+        scale: per-trigger strength, multiplied with the master intensity."""
+        scaled = scale_sequence(seq, self.intensity * max(0.0, min(1.0, scale)))
         targets = self.dots if dot_index is None else [self.dots[dot_index]]
 
         def go():
@@ -182,7 +183,7 @@ class HapticControl:
                     d.registers.set_led_mode(LedMode.GLOBAL_MANUAL)
                     d.registers.set_global_led(*rgb)
         r = self._run(f"pattern:{name}", go)
-        r["intensity"] = self.intensity
+        r["intensity"] = round(self.intensity * scale, 3)
         return r
 
     # ---- playground controls -------------------------------------------------------------
