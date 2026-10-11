@@ -12,7 +12,7 @@ Built at the INTERFACE hackathon, October 2026.
 phone. Haiku boxes the cardboard box ahead, and the Dot buzzes 1.7 s after the frame ("Something in my way", amber).
 Left: the demo screen's glasses view (`/demo`). Right: the app showing that run's real buzzes.*
 
-**Watch:** [the demo, 79 s](site/assets/demo.mp4) (real test-walk footage, then the app) · **Project page:** [`site/`](site/index.html)
+**Watch:** [the demo, 75 s](site/assets/demo.mp4) (real test-walk footage, then the app) · **Project page:** [`site/`](site/index.html)
 
 ## Scenarios
 
@@ -30,8 +30,8 @@ Five moments from the demo. The first three are real takes from the hackathon fl
 
 ### Why
 
-Self-driving cars have super-sensors. They see in every direction and never get distracted. People do not. We look
-at our phones, we focus on one thing, and we miss the box on the floor or the hand coming toward us.
+Our eyes can only be in one place. We look at our phones, we focus on one thing, and we miss the box on the floor
+or the hand coming toward us.
 
 Spidey Sense gives a person one extra sense. It does not take over. It does not decide for you. It keeps you in the
 loop and makes you a little more aware: a tap on the wrist means "look around, something needs you".
