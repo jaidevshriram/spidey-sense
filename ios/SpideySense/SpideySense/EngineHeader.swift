@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// v3 header strip shown on every tab: what the engine is reading from (Neon live / fake source / disconnected),
-/// where the haptics go (real Dot over BLE vs the console sink) and the engine pause switch.
+/// where the haptics go (real Dot over BLE vs the console sink). The pause switch lives in the Debug hub.
 struct EngineHeader: View {
     let stream: EventStream
 
@@ -12,20 +12,9 @@ struct EngineHeader: View {
                 if let s = sink { Chip(text: s.text, icon: s.icon, color: s.color) }
                 if let r = radar { Chip(text: r.text, icon: r.icon, color: r.color) }
                 Spacer(minLength: 4)
-                Image(systemName: stream.paused ? "pause.circle.fill" : "pause.circle")
-                    .foregroundStyle(stream.paused ? .orange : .secondary)
-                    .accessibilityHidden(true)
-                Toggle("Pause", isOn: Binding(get: { stream.paused }, set: { stream.command(.pause($0)) }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(.orange)
-                .fixedSize()
-                .layoutPriority(1)
-                .disabled(!stream.isLive)
-                .accessibilityLabel("Pause the engine")
             }
             if stream.paused {
-                Label("Paused: detection still logs, nothing reaches the Dot", systemImage: "pause.circle.fill")
+                Label("Paused (Debug → Pause detection): detection still logs, nothing reaches the Dot", systemImage: "pause.circle.fill")
                     .font(.caption.bold()).foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -100,5 +89,14 @@ extension View {
     /// Pins the engine header (source, sink, pause) under the navigation bar.
     func engineHeader(_ stream: EventStream) -> some View {
         safeAreaInset(edge: .top, spacing: 0) { EngineHeader(stream: stream) }
+    }
+}
+
+/// A NavigationStack unless the view is pushed inside one (the Debug hub).
+struct NavWrap<Content: View>: View {
+    let embedded: Bool
+    @ViewBuilder let content: Content
+    var body: some View {
+        if embedded { content } else { NavigationStack { content } }
     }
 }

@@ -15,6 +15,8 @@ targets:
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
         UILaunchScreen: {}
+        UIUserInterfaceStyle: Light          # light theme app-wide
+        UIAppFonts: [PlusJakartaSans.ttf]   # from SpideySense/Fonts/ (copied flat into the bundle); headings (SIL OFL 1.1, Tokotype); see Theme.swift Typo
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSLocalNetworkUsageDescription: Connects to the Spidey Sense engine on your Mac
         NSBonjourServices: [_spidey._tcp]

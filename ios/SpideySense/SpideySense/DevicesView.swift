@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DevicesView: View {
     let stream: EventStream
+    var embedded = false   // pushed from the Debug hub (no own NavigationStack)
 
     /// The Mac hub card always reflects the real WebSocket; the rest come from the engine
     /// (device.status every ~5 s) or sample data while offline.
@@ -32,7 +33,7 @@ struct DevicesView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavWrap(embedded: embedded) {
             ScrollView {
                 VStack(spacing: 12) {
                     if stream.devicesAreSample {
