@@ -191,9 +191,9 @@ class Tracer:
             try:
                 img = frame.image
                 h, w = img.shape[:2]
-                s = min(1.0, 640 / max(h, w))
+                s = min(1.0, float(self.cfg.get("live_max_side", 1280)) / max(h, w))
                 small = cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
-                ok, jpg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                ok, jpg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, int(self.cfg.get("live_quality", 85))])
                 if ok:
                     _atomic_write(live / "frame.jpg", jpg.tobytes())
                     state["img_wh"] = [small.shape[1], small.shape[0]]

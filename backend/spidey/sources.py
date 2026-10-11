@@ -163,6 +163,7 @@ class NeonSource(GazeFrameSource):
         # queue up seconds of video); every keep_every-th old frame still passes so a slow link never starves
         self.max_frame_age_ms, self.keep_every = max_frame_age_ms, keep_every
         self._dropped, self._drop_run = 0, 0
+        self.min_yield_s, self._last_yield = 0.25, 0.0
 
     def stats(self) -> dict:
         """worn / battery / delay_ms for the app's status message. Battery comes from the Companion's
@@ -203,7 +204,10 @@ class NeonSource(GazeFrameSource):
                           f"p90 {a[int(len(a) * .9)]:.0f} ms · gaze {'ok' if gaze else 'NOT WORN'}", flush=True)
                     self._ages.clear()
                 ts = s.t if 0 <= age < 5000 else now
-                if age > self.max_frame_age_ms and self._drop_run < self.keep_every:
+                # a lagging link (all frames late) still yields >= 4 fps, so gaze + live view keep moving;
+                # the staleness gates downstream use the true capture time
+                if age > self.max_frame_age_ms and self._drop_run < self.keep_every \
+                        and now - self._last_yield < self.min_yield_s:
                     self._dropped += 1
                     self._drop_run += 1
                     if self._dropped % 100 == 1:
@@ -211,6 +215,7 @@ class NeonSource(GazeFrameSource):
                               f"{self._dropped} dropped so far", flush=True)
                     continue
                 self._drop_run = 0
+                self._last_yield = now
             else:
                 ts = now   # Capture's s.t is Pupil time, not unix time: use local receive time
             yield Frame(ts=ts, image=s.frame, gaze_xy=gaze, gaze_norm=False)

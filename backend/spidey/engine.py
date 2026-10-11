@@ -90,6 +90,7 @@ class Controller:
         self.lock = threading.RLock()        # guards rules + settings (socket thread vs engine loop)
         self.sink_lock = threading.Lock()    # one sink call at a time
         self.quiet = False
+        self.vision_off = False              # Haiku off: frames + gaze + live view keep flowing, no API calls
         self.paused = False                  # pause: detection + Log keep running, nothing reaches the sink
         self.intensity = 1.0                 # master intensity, applied via sink.control
         self.haptics = getattr(sink, "control", None)   # HapticControl (real or mock dots)
@@ -256,7 +257,7 @@ class Controller:
     def status_msg(self) -> dict:
         det = self.cfg.get("detector") or {}
         sink_type = (self.cfg.get("sink") or {}).get("type", "console")
-        return {"type": "status", "paused": self.paused, "source": self.source_status(),
+        return {"type": "status", "paused": self.paused, "haiku": not self.vision_off, "source": self.source_status(),
                 "radar": self.radar_status(),
                 "about": {"config": Path(self.cfg.get("_config_path", "config.yaml")).name,
                           "model": det.get("model", "claude-haiku-5-5") if det.get("type") == "vlm"
@@ -475,6 +476,10 @@ class Controller:
             self.paused = bool(args.get("on", not self.paused))
             ack["detail"] = f"pause {'on' if self.paused else 'off'}"
             self.broadcast_status()
+        elif name == "haiku":
+            self.vision_off = not bool(args.get("on", self.vision_off))
+            ack["detail"] = f"haiku {'off' if self.vision_off else 'on'}"
+            self.broadcast_status()
         elif name == "quiet":
             self.quiet = bool(args.get("on", not self.quiet))
             ack["detail"] = f"quiet {'on' if self.quiet else 'off'}"
@@ -610,6 +615,7 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                      rules_path=ROOT / cfg.get("rules_file", "triggers.json"),
                      feedback_path=ROOT / cfg.get("feedback_log", "logs/feedback.jsonl"))
     ctl.detector, ctl.source = detector, source
+    ctl.vision_off = os.environ.get("HAIKU_OFF") == "1"   # start with Haiku paused (network tests)
     ctl.push_triggers()
     every = cfg.get("detect_every_s", 0)  # throttle slow detectors (e.g. a VLM)
     srv_cfg = cfg.get("server", {"enabled": True})
@@ -717,7 +723,7 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                     tracer.live(frame, live_state(ctl, frame, last_call, last_decision))
                 if duration_s and time.time() - t_start > duration_s:
                     break
-                if time.time() - last_detect < every:
+                if ctl.vision_off or time.time() - last_detect < every:
                     continue
                 last_detect = t_detect = time.time()
 

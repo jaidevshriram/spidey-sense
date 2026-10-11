@@ -309,7 +309,7 @@ async function tick(){
     if(!st || !st.frame_ts){ $("head").textContent="No live data yet (run "+(st&&st.run||"?")+"): is the engine running with tracing on?"; return; }
     const img=new Image(); img.onload=()=>{$("scene").src=img.src;}; img.src="/runs/"+encodeURIComponent(st.run)+"/live/frame.jpg?t="+st.written;
     const lc=st.last_call;
-    $("head").innerHTML=`frame age <b>${Math.round(st.frame_age_s*1000)} ms</b>${st.stale_s>1.5?` · <span class=err>engine not writing (${st.stale_s} s)</span>`:""}`
+    $("head").innerHTML=`frame age <b>${Math.round(st.frame_age_s*1000)} ms</b>${st.stale_s>1.5?` · <span class=err>no video from the glasses for ${st.stale_s} s (phone→Mac Wi-Fi stalled)</span>`:st.frame_age_s>0.8?` · <span class=err>video delayed (Wi-Fi)</span>`:""}`
       +(st.paused?` · <span class=err>PAUSED</span>`:"")
       +(st.truth?` · page shows <span class=truth><b>${esc(st.truth.shown)}</b></span>`:"")
       +(lc?`<br>Haiku #${lc.id} (${lc.age_s} s old): ${lc.hazard?`<b style="color:#c00">${esc(lc.hazard)}</b> · `:""}<i>${esc(lc.reason)}</i>`:"");

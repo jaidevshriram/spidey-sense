@@ -523,3 +523,10 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   `-openPhoto`, `-openTech`, `-expandPhoto`, `-homeScroll earlier`, `-forceEmpty`, `-debugOpen`, `-demoWizard`, `-demoArrive`.
 - Gotchas: `simctl launch` args must be word-split (zsh doesn't split `$ARGS`; use a bash script); `-serverURL ws://…` as a
   launch argument overrides the stored URL without touching the migration; never point the simulator at :8765 (live Dot).
+
+## 2026-10-10 20:30 · Live-view stalls + blurry live view
+- Symptom: /live showed "engine not writing" for seconds at a time; image blurry.
+- Measured with Haiku paused (`HAIKU_OFF=1`, new): Neon video still arrives 1–3 s late in bursts → the phone-hotspot Wi-Fi link is the bottleneck, not Haiku. The old drain passed only 1 of 30 late frames (~1 fps) → gaps.
+- Fix: NeonSource yields the newest frame at least every 0.25 s even while lagging (staleness gates still use capture time). 60 s check: 0 gaps > 1.5 s (max 1.1 s).
+- Live view now 1280 px @ JPEG 85 (was 640 @ 70); `trace.live_max_side` / `trace.live_quality`.
+- New engine command `{"type":"command","name":"haiku","args":{"on":false}}` and env `HAIKU_OFF=1` (frames, gaze, live view keep running; no API calls). /live now says "no video from the glasses (Wi-Fi stalled)" / "video delayed" instead of "engine not writing".

@@ -73,3 +73,5 @@ Desk tests A–E: see README "Desk tests" (page `./scripts/desk_test.sh`, engine
 - Radar → buzz live (paused; estimate ≈ 0.15 s)
 - Temporal trigger: approach → buzz latency
 - Desk test hit/miss table (A–D + radar)
+
+- Network: Neon video over the phone hotspot lags 1–3 s in bursts (even with Haiku off). Engine now degrades to >=4 fps instead of stalling. `HAIKU_OFF=1 ./scripts/engine_ble.sh ...` starts with Haiku paused; live view is 1280 px.
