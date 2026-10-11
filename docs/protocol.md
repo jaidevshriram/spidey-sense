@@ -299,3 +299,34 @@ frame is older than that at decision time; `looking_at` triggers with a box also
 (4 % margin) at decision time. Temporal triggers: the latest tick's `ordinal: "farther"` (or a gap that grew by more than ε)
 vetoes a fire unless `touching`.
 
+## v3.4: walking gate, time-to-contact, per-trigger staleness (added 2026-10-11)
+
+All additions are optional. Older engines ignore the new `if` keys; older apps ignore the new status/event fields.
+
+Trigger `if` additions (camera triggers; any source may carry them):
+```jsonc
+"if": {
+  "only_while_walking": true,    // fire only while the glasses' IMU says the wearer is walking. If walking is unknown
+                                 //   (no motion samples yet) the gate does not block.
+  "max_ttc_s": 3.0,              // fire only if the wearer would reach the thing within this many seconds
+                                 //   (time-to-contact from box growth; no estimate yet = no fire). Not for temporal triggers.
+  "max_age_s": 6.0,              // per-trigger result staleness limit; overrides config max_result_age_s (static obstacles)
+  "keep_on_view_change": true    // keep a result valid after the view changes (head turn); default false
+}
+```
+**Apps must round-trip `if` keys they don't know.** The iOS app keeps every unmodelled `if` key verbatim
+(`RuleCondition.extra`) and writes it back on `rules.upsert`; editors that rebuild the condition merge the original's
+unmodelled keys back in (`RuleCondition.preserving`). The app's trigger wizard and editor expose `only_while_walking`
+as "Only while I'm walking" (default off; off = key omitted, or `false` if the trigger already had it).
+
+`status.source` additions (from the glasses' IMU; `null` while unknown):
+```jsonc
+"source": {..., "walking": true, "cadence_spm": 112.0, "turning": false}
+```
+`cadence_spm` = steps per minute, only while walking. The app's Neon card shows "walking · 112 steps/min" / "still",
+plus "turning" when true.
+
+Trigger results may carry `ttc_s` (seconds to contact, optional): it appears on camera `event`s (flattened from the
+rule's extra, alongside `gaze_mode` / `looked_at_s_ago`) and may appear on `trace` decisions; the event `why` gains
+"(about 2.1 s away)". Decision `why` strings for the new gates: `not walking (only while walking)`, `not approaching it (no time-to-contact yet)`,
+`reaching it in 4.2 s (> 3 s)`, `stale: result 3.1 s old (max 6 s)`, `stale: the view changed 0.8 s ago, after this frame`.

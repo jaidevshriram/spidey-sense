@@ -85,6 +85,11 @@ struct DeviceCard: View {
                 if let d = device.detail { Text(d).font(.footnote) }
                 // Newer engines already fold fps/gaze/battery into `detail`; only add the line when they don't.
                 if let src = device.source, !(device.detail ?? "").contains("fps") { NeonDetail(source: src) }
+                // v3.4: IMU motion state from `status.source` (walking / cadence / turning).
+                if let m = device.source?.motionSummary {
+                    Label(m, systemImage: device.source?.walking == true ? "figure.walk" : "figure.stand")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
                 if let r = device.radar { RadarDetail(radar: r, now: now) }
                 if let h = device.heart { HeartDetail(heart: h, now: now, lastSeen: device.lastSeen) }
                 if let l = device.link, l.transport != nil {

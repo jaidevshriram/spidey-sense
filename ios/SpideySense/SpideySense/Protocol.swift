@@ -46,6 +46,10 @@ enum RuleWhen: Codable, Hashable {
 
 /// The rule's `if` block. Vision keys are applied by the engine today; heart-rate and
 /// metric keys are stored and round-tripped only (TODO in spidey/rules.py).
+///
+/// Round-trip guarantee: every `if` key the app doesn't model is kept verbatim in `extra` and written back on
+/// encode, so editing a trigger never drops keys a newer engine added. Editors that build a fresh condition must
+/// call `preserving(_:)` with the original so the unmanaged keys (v3.4 and `extra`) carry over.
 struct RuleCondition: Codable, Hashable {
     var unseen: Bool?
     var seen: Bool?
@@ -60,13 +64,35 @@ struct RuleCondition: Codable, Hashable {
     var minDeltaBpm: Double?    // heart_rate: bpm >= 2-min median + this ...
     var minDeltaPct: Double?    // ... or >= median * (1 + this %)
     var sustainS: Double?       // heart_rate: for at least this many seconds
+    // v3.4 (docs/protocol.md "v3.4"). Older engines ignore them.
+    var onlyWhileWalking: Bool? // fire only while the glasses' IMU says the wearer is walking
+    var maxTtcS: Double?        // fire only if the wearer would reach it within this many seconds
+    var maxAgeS: Double?        // per-trigger result staleness limit (overrides config max_result_age_s)
+    var keepOnViewChange: Bool? // static things (obstacles) stay valid after the view changes
+    /// Every other `if` key, kept verbatim so it survives an edit.
+    var extra: [String: JSONValue] = [:]
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case unseen, seen, metric
         case minUrgency = "min_urgency", maxUrgency = "max_urgency"
         case hrBandBpm = "hr_band_bpm", hrWindowS = "hr_window_s", valueGt = "value_gt"
         case maxDistanceM = "max_distance_m", minSpeedMps = "min_speed_mps"
         case minDeltaBpm = "min_delta_bpm", minDeltaPct = "min_delta_pct", sustainS = "sustain_s"
+        case onlyWhileWalking = "only_while_walking", maxTtcS = "max_ttc_s"
+        case maxAgeS = "max_age_s", keepOnViewChange = "keep_on_view_change"
+    }
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+
+    /// Copies the keys no editor manages (v3.4 gates + unknown keys) from `old` where this condition has none.
+    func preserving(_ old: RuleCondition?) -> RuleCondition {
+        guard let old else { return self }
+        var c = self
+        c.onlyWhileWalking = c.onlyWhileWalking ?? old.onlyWhileWalking
+        c.maxTtcS = c.maxTtcS ?? old.maxTtcS
+        c.maxAgeS = c.maxAgeS ?? old.maxAgeS
+        c.keepOnViewChange = c.keepOnViewChange ?? old.keepOnViewChange
+        c.extra = old.extra.merging(c.extra) { _, new in new }
+        return c
     }
 
     init(unseen: Bool? = nil, seen: Bool? = nil, minUrgency: Double? = nil, maxUrgency: Double? = nil,
@@ -88,6 +114,45 @@ struct RuleCondition: Codable, Hashable {
         maxDistanceM = c.lenient(Double.self, .maxDistanceM); minSpeedMps = c.lenient(Double.self, .minSpeedMps)
         minDeltaBpm = c.lenient(Double.self, .minDeltaBpm); minDeltaPct = c.lenient(Double.self, .minDeltaPct)
         sustainS = c.lenient(Double.self, .sustainS)
+        onlyWhileWalking = c.lenient(Bool.self, .onlyWhileWalking); maxTtcS = c.lenient(Double.self, .maxTtcS)
+        maxAgeS = c.lenient(Double.self, .maxAgeS); keepOnViewChange = c.lenient(Bool.self, .keepOnViewChange)
+        // Unknown keys are stored raw. A known key whose value was mistyped (decoded to nil above) is kept raw
+        // too, so the engine gets back exactly what it sent.
+        let all = try decoder.container(keyedBy: AnyCodingKey.self)
+        for k in all.allKeys {
+            guard let v = try? all.decode(JSONValue.self, forKey: k) else { continue }
+            if !Self.knownKeys.contains(k.stringValue) || !hasTypedValue(k.stringValue) { extra[k.stringValue] = v }
+        }
+    }
+
+    /// True when the typed property for a known key holds a value (i.e. it decoded fine or was set).
+    private func hasTypedValue(_ key: String) -> Bool {
+        switch CodingKeys(rawValue: key) {
+        case .unseen: unseen != nil; case .seen: seen != nil; case .metric: metric != nil
+        case .minUrgency: minUrgency != nil; case .maxUrgency: maxUrgency != nil
+        case .hrBandBpm: hrBandBpm != nil; case .hrWindowS: hrWindowS != nil; case .valueGt: valueGt != nil
+        case .maxDistanceM: maxDistanceM != nil; case .minSpeedMps: minSpeedMps != nil
+        case .minDeltaBpm: minDeltaBpm != nil; case .minDeltaPct: minDeltaPct != nil; case .sustainS: sustainS != nil
+        case .onlyWhileWalking: onlyWhileWalking != nil; case .maxTtcS: maxTtcS != nil
+        case .maxAgeS: maxAgeS != nil; case .keepOnViewChange: keepOnViewChange != nil
+        case nil: false
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        // Unmodelled keys first; a typed value for the same key (set by an editor) wins.
+        var raw = encoder.container(keyedBy: AnyCodingKey.self)
+        for (k, v) in extra where !hasTypedValue(k) { try raw.encode(v, forKey: AnyCodingKey(k)) }
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(unseen, forKey: .unseen); try c.encodeIfPresent(seen, forKey: .seen)
+        try c.encodeIfPresent(minUrgency, forKey: .minUrgency); try c.encodeIfPresent(maxUrgency, forKey: .maxUrgency)
+        try c.encodeIfPresent(hrBandBpm, forKey: .hrBandBpm); try c.encodeIfPresent(hrWindowS, forKey: .hrWindowS)
+        try c.encodeIfPresent(metric, forKey: .metric); try c.encodeIfPresent(valueGt, forKey: .valueGt)
+        try c.encodeIfPresent(maxDistanceM, forKey: .maxDistanceM); try c.encodeIfPresent(minSpeedMps, forKey: .minSpeedMps)
+        try c.encodeIfPresent(minDeltaBpm, forKey: .minDeltaBpm); try c.encodeIfPresent(minDeltaPct, forKey: .minDeltaPct)
+        try c.encodeIfPresent(sustainS, forKey: .sustainS)
+        try c.encodeIfPresent(onlyWhileWalking, forKey: .onlyWhileWalking); try c.encodeIfPresent(maxTtcS, forKey: .maxTtcS)
+        try c.encodeIfPresent(maxAgeS, forKey: .maxAgeS); try c.encodeIfPresent(keepOnViewChange, forKey: .keepOnViewChange)
     }
 }
 
@@ -334,10 +399,14 @@ struct SourceStatus: Decodable, Hashable {
     var worn: Bool?
     var battery: Double?        // %
     var delayMs: Double?
+    // v3.4: the glasses' IMU (null while unknown, e.g. no motion samples yet).
+    var walking: Bool?
+    var cadenceSpm: Double?     // steps per minute, while walking
+    var turning: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case type, live, fps, worn, battery
-        case gazeHz = "gaze_hz", delayMs = "delay_ms"
+        case type, live, fps, worn, battery, walking, turning
+        case gazeHz = "gaze_hz", delayMs = "delay_ms", cadenceSpm = "cadence_spm"
     }
 
     init(type: String? = nil, live: Bool? = nil, fps: Double? = nil, gazeHz: Double? = nil, worn: Bool? = nil,
@@ -351,6 +420,20 @@ struct SourceStatus: Decodable, Hashable {
         type = c.lenient(String.self, .type); live = c.lenient(Bool.self, .live); fps = c.lenient(Double.self, .fps)
         gazeHz = c.lenient(Double.self, .gazeHz); worn = c.lenient(Bool.self, .worn)
         battery = c.lenient(Double.self, .battery); delayMs = c.lenient(Double.self, .delayMs)
+        walking = c.lenient(Bool.self, .walking); cadenceSpm = c.lenient(Double.self, .cadenceSpm)
+        turning = c.lenient(Bool.self, .turning)
+    }
+
+    /// "walking · 112 steps/min · turning" / "still"; nil when the engine sends no motion state.
+    var motionSummary: String? {
+        guard walking != nil || turning == true else { return nil }
+        var bits: [String] = []
+        if let w = walking {
+            bits.append(w ? "walking" : "still")
+            if w, let c = cadenceSpm, c > 0 { bits.append(String(format: "%.0f steps/min", c)) }
+        }
+        if turning == true { bits.append("turning") }
+        return bits.joined(separator: " · ")
     }
 
     var isFake: Bool { type == "fake" }
@@ -736,9 +819,22 @@ struct FeedbackMessage: Encodable {
 
 enum CommandName: String, Codable { case testPattern = "test_pattern", stopAll = "stop_all", resetDot = "reset_dot", setIntensity = "set_intensity", quiet, pause }
 
-/// Small JSON value for command args.
-enum JSONValue: Encodable, Hashable {
+/// Small JSON value for command args, and for round-tripping rule keys the app doesn't model (RuleCondition.extra).
+indirect enum JSONValue: Codable, Hashable {
     case string(String), number(Double), bool(Bool), null
+    case array([JSONValue]), object([String: JSONValue])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let b = try? c.decode(Bool.self) { self = .bool(b) }   // before Double: JSON true must not become 1
+        else if let n = try? c.decode(Double.self) { self = .number(n) }
+        else if let s = try? c.decode(String.self) { self = .string(s) }
+        else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
+        else if let o = try? c.decode([String: JSONValue].self) { self = .object(o) }
+        else { self = .null }
+    }
+
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
         switch self {
@@ -746,8 +842,19 @@ enum JSONValue: Encodable, Hashable {
         case .number(let n): try c.encode(n)
         case .bool(let b): try c.encode(b)
         case .null: try c.encodeNil()
+        case .array(let a): try c.encode(a)
+        case .object(let o): try c.encode(o)
         }
     }
+}
+
+/// Any string key, for dictionaries with keys not known at compile time.
+struct AnyCodingKey: CodingKey, Hashable {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init(_ s: String) { stringValue = s }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { stringValue = String(intValue) }
 }
 
 struct CommandMessage: Encodable {

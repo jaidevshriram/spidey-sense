@@ -43,7 +43,8 @@ enum RulePlain {
         }
         if r.isCustom, let d = r.describe?.trimmingCharacters(in: .whitespaces), !d.isEmpty {
             let what = cleanWhat(d)
-            return "Buzzes when we see \(what)\(gaze)" + (r.isTemporal ? ", and it keeps getting closer." : ".")
+            let walking = r.cond.onlyWhileWalking == true ? ", while you're walking" : ""
+            return "Buzzes when we see \(what)\(gaze)" + (r.isTemporal ? ", and it keeps getting closer" : "") + walking + "."
         }
         // Built-in hazard logic.
         if case .kinds(let k) = r.when, !k.isEmpty {

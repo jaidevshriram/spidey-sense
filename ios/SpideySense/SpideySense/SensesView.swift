@@ -23,6 +23,7 @@ enum RuleText {
         if c.seen == true { parts.append("hazard seen") }
         if let m = c.minUrgency { parts.append("urgency ≥ \(fmt(m))") }
         if let m = c.maxUrgency { parts.append("urgency ≤ \(fmt(m))") }
+        if c.onlyWhileWalking == true { parts.append("only while walking") }
         if parts.isEmpty { return r.senseSource == .manual ? "tapped" : "any \(r.when.label)" }
         return parts.joined(separator: ", ")
     }
@@ -354,6 +355,7 @@ struct SenseBuilder: View {
     @State private var sensitivity = "medium"
     @State private var maxDistance = 2.0
     @State private var minSpeed = 0.3
+    @State private var walkingOnly = false               // v3.4 if.only_while_walking (camera)
     // heart rate (Oura)
     @State private var hrDelta = 15.0
     @State private var hrPct = 20.0
@@ -531,6 +533,15 @@ struct SenseBuilder: View {
             }
             Stepper("Cooldown \(RuleText.fmt(cooldown)) s", value: $cooldown, in: 1...60, step: 1)
         }
+        walkingSection
+    }
+
+    private var walkingSection: some View {
+        Section {
+            Toggle("Only while I'm walking", isOn: $walkingOnly)
+        } footer: {
+            Text("Stays quiet while you're sitting or standing still.")
+        }
     }
 
     @ViewBuilder private var radarSections: some View {
@@ -598,6 +609,7 @@ struct SenseBuilder: View {
             }
             Stepper("Cooldown \(RuleText.fmt(cooldown)) s", value: $cooldown, in: 0...600, step: 1)
         }
+        if source == .neon { walkingSection }
     }
 
     private var hapticSection: some View {
@@ -651,6 +663,7 @@ struct SenseBuilder: View {
         sensitivity = ["low", "medium", "high"].contains(r.trend?.sensitivity ?? "") ? r.trend!.sensitivity : "medium"
         maxDistance = min(max(c.maxDistanceM ?? 2.0, 0.5), 4)
         minSpeed = min(max(c.minSpeedMps ?? 0.3, 0.1), 1.5)
+        walkingOnly = c.onlyWhileWalking ?? false
         if let f = FeelKind(rawValue: r.feel), f != .custom { feel = f; customFeel = "" }
         else { feel = .custom; customFeel = r.feel }
         intensity = r.intensity ?? 1
@@ -671,6 +684,7 @@ struct SenseBuilder: View {
         let rgb = TriggerColor.rgb(led)
         if isCustom && sensor == .heartRate {
             let c = RuleCondition(minDeltaBpm: hrDelta, minDeltaPct: hrPct, sustainS: hrSustain)
+                .preserving(original?.cond)
             return SenseRule(id: id, name: finalName, enabled: enabled, source: SenseSource.heartRate.rawValue,
                              when: .any, cond: c, feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
                              kind: "custom", describe: nil, intensity: (intensity * 100).rounded() / 100, rgb: rgb)
@@ -686,6 +700,9 @@ struct SenseBuilder: View {
             } else {
                 c.unseen = gaze == .unseen; c.minUrgency = minUrgency
             }
+            // Keep the `if` keys this sheet doesn't edit (max_age_s, keep_on_view_change, unknown keys).
+            c = c.preserving(original?.cond)
+            if !radar { setWalking(&c) }
             var r = SenseRule(id: id, name: finalName, enabled: enabled, source: sensor.rawValue,
                               when: .any, cond: c, feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
                               kind: "custom", describe: radar ? nil : trimmedDescribe,
@@ -706,6 +723,7 @@ struct SenseBuilder: View {
         case .valueAbove: c.metric = metric; c.valueGt = threshold
         case .always: break
         }
+        if source == .neon { setWalking(&c) }
         let kinds = hazards.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty && $0 != "any" }
         // Built-ins only send intensity/rgb when changed from the defaults (or already set), so untouched
@@ -723,6 +741,11 @@ struct SenseBuilder: View {
             r.noticeMemoryS = o.noticeMemoryS; r.temporal = o.temporal; r.trend = o.trend
         }
         return r
+    }
+
+    /// On = true; off = omit the key, unless the trigger already carried it (then send false).
+    private func setWalking(_ c: inout RuleCondition) {
+        c.onlyWhileWalking = walkingOnly ? true : (c.onlyWhileWalking == nil ? nil : false)
     }
 
     /// "warn me if someone holding a knife is near…" -> "Someone holding a knife".

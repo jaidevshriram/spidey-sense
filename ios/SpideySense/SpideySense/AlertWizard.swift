@@ -16,6 +16,7 @@ struct AlertDraft {
     var gaze: GazeMode = .unseen
     var noticeMemory: Double = 3
     var temporal = false
+    var walkingOnly = false           // if.only_while_walking (camera); default off
     var feel: String?                 // nil = recommended
     var rgb: [Int]?                   // nil = the feel's default colour
     var intensity: Double = 1
@@ -81,6 +82,7 @@ struct AlertDraft {
             case .any: break
             }
             if temporal { out += p(", and it ") + b("keeps getting closer") }
+            if walkingOnly { out += p(" while ") + b("you're walking") }
         }
         let f = Plain.feelName(effectiveFeel)
         out += p(", you'll feel a ") + b(f) + p(".")
@@ -101,6 +103,7 @@ struct AlertDraft {
             case .any: break
             }
             if temporal { s += ", once it keeps getting closer" }
+            if walkingOnly { s += ", while you're walking" }
             return s + "."
         }
     }
@@ -118,6 +121,7 @@ struct AlertDraft {
         d.gaze = r.effectiveGazeMode
         d.noticeMemory = r.noticeMemoryS ?? 3
         d.temporal = r.isTemporal
+        d.walkingOnly = r.cond.onlyWhileWalking ?? false
         d.feel = r.feel
         d.rgb = r.rgb
         d.intensity = r.intensity ?? 1
@@ -149,17 +153,22 @@ struct AlertDraft {
         case .heart:
             r.source = SenseSource.heartRate.rawValue; r.when = .any; r.describe = nil
             r.cond = RuleCondition(minDeltaBpm: hrDelta, minDeltaPct: hrPct, sustainS: hrSustain)
+                .preserving(original?.cond)
             r.gazeMode = nil; r.noticeMemoryS = nil; r.temporal = nil; r.trend = nil
         case .radar:
             r.source = SenseSource.radar.rawValue; r.when = .any; r.describe = nil
             r.cond = RuleCondition(unseen: true, maxDistanceM: (maxDistance * 10).rounded() / 10,
                                    minSpeedMps: (minSpeed * 100).rounded() / 100)
+                .preserving(original?.cond)
             r.gazeMode = GazeMode.unseen.rawValue; r.noticeMemoryS = nil; r.temporal = false; r.trend = nil
         case .camera:
             r.source = SenseSource.neon.rawValue
             r.describe = trimmedDescribe
-            var c = original?.isCustom == true && original?.senseSource == .neon ? original!.cond : RuleCondition()
+            var c = (original?.isCustom == true && original?.senseSource == .neon ? original!.cond : RuleCondition())
+                .preserving(original?.cond)
             c.unseen = gaze == .unseen; c.minUrgency = minUrgency
+            // Off = omit the key (older engines never saw it), unless the trigger already had it.
+            c.onlyWhileWalking = walkingOnly ? true : (c.onlyWhileWalking == nil ? nil : false)
             c.maxDistanceM = nil; c.minSpeedMps = nil; c.minDeltaBpm = nil; c.minDeltaPct = nil; c.sustainS = nil
             r.cond = c
             r.gazeMode = gaze.rawValue
@@ -272,6 +281,7 @@ struct AlertWizard: View {
         if d.object(forKey: "wizardStep") != nil, let s = Step(rawValue: d.integer(forKey: "wizardStep")) { step = s }
         if d.bool(forKey: "wizardCustomize") { customizeFeel = true; draft.feel = draft.recommendedFeel }
         if d.bool(forKey: "wizardSaved") { saved = true }
+        if d.bool(forKey: "wizardWalking") { draft.walkingOnly = true }
     }
 
     /// `-demoWizard YES`: plays the whole flow by itself, for the screen recording.
@@ -399,6 +409,11 @@ struct AlertWizard: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .scrollIndicators(.hidden)
+        .onAppear {
+            // Screenshot hook: `-wizardScrollTo walking` scrolls the When step to the walking switch.
+            guard step == .when, UserDefaults.standard.string(forKey: "wizardScrollTo") == "walking" else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo("walking", anchor: .bottom) }
+        }
         .onChange(of: advanced) { _, open in
             // Opening Advanced brings it into view.
             guard open else { return }
@@ -518,7 +533,15 @@ struct AlertWizard: View {
             ChoiceCard(icon: "bell.fill", title: "Always",
                        detail: "Whenever it's there, whether you've seen it or not.",
                        selected: draft.gaze == .any) { setGaze(.any) }
+            WalkingSwitch(isOn: walkingBinding)
+                .padding(.top, 4)
+                .id("walking")
         }
+    }
+
+    private var walkingBinding: Binding<Bool> {
+        Binding(get: { draft.walkingOnly },
+                set: { on in softHaptic(); withAnimation(Theme.motion(reduceMotion)) { draft.walkingOnly = on } })
     }
 
     private func setGaze(_ g: GazeMode) {
@@ -627,6 +650,9 @@ struct AlertWizard: View {
                     summaryRow(icon: "eye", label: "Warn me", value: gazeText, edit: .when)
                     Divider().padding(.leading, 52)
                     summaryRow(icon: "timer", label: "Timing", value: draft.temporal ? "When it keeps getting closer" : "Right away", edit: .wait)
+                    Divider().padding(.leading, 52)
+                    WalkingSwitch(isOn: walkingBinding, compact: true)
+                        .padding(.horizontal, 12).padding(.vertical, 12)
                 }
                 Divider().padding(.leading, 52)
                 summaryRow(icon: Plain.feelIcon(draft.effectiveFeel), label: "Feels like",
@@ -888,6 +914,84 @@ struct ChoiceCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(detail).font(.body).foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// "Only while I'm walking" (if.only_while_walking). `compact` = a row inside the Review card.
+struct WalkingSwitch: View {
+    @Binding var isOn: Bool
+    var compact = false
+    @Environment(\.dynamicTypeSize) private var dynamicType
+
+    var body: some View {
+        Group {
+            if dynamicType.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack { icon; Spacer(); toggle }
+                    text
+                }
+            } else {
+                HStack(alignment: compact ? .center : .top, spacing: compact ? 12 : 16) {
+                    icon
+                    text
+                    Spacer(minLength: 8)
+                    toggle
+                }
+            }
+        }
+        .modifier(WalkingCardStyle(card: !compact, on: isOn))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Only while I'm walking")
+        .accessibilityHint("Stays quiet while you're sitting or standing still.")
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { isOn.toggle() }
+    }
+
+    @ViewBuilder private var icon: some View {
+        if compact {
+            Image(systemName: "figure.walk").font(.body).foregroundStyle(Theme.inkSecondary).frame(width: 28)
+        } else {
+            Image(systemName: "figure.walk").font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(isOn ? .white : Theme.ink)
+                .frame(width: 54, height: 54)
+                .background(isOn ? Theme.accent : Theme.ink.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private var text: some View {
+        VStack(alignment: .leading, spacing: compact ? 2 : 6) {
+            Text("Only while I'm walking")
+                .font(compact ? .body : .spCardTitle).foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Stays quiet while you're sitting or standing still.")
+                .font(compact ? .footnote : .body).foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var toggle: some View {
+        Toggle("Only while I'm walking", isOn: $isOn).labelsHidden().tint(Theme.accent)
+    }
+}
+
+private struct WalkingCardStyle: ViewModifier {
+    let card: Bool
+    let on: Bool
+    func body(content: Content) -> some View {
+        if card {
+            content
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(on ? Theme.accent.opacity(0.05) : Theme.card,
+                            in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(on ? Theme.accent : Theme.hairline, lineWidth: on ? 2 : 1))
+                .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
+        } else {
+            content
         }
     }
 }
