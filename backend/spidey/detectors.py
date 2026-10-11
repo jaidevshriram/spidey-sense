@@ -325,6 +325,12 @@ class VLMDetector(Detector):
             # the custom triggers); an early result is stale if any newer result of either stage was delivered.
             newest = self._last_delivered[1] if stage == 1 else max(self._last_delivered)
             if frame_ts <= newest:
+                # an older call that FOUND a custom trigger still counts (calls overlap, so with concurrency 3 a
+                # match often finishes after a newer no-match call); the engine's staleness gates still apply
+                if stage == 1 and any(isinstance(t, dict) and t.get("match") for t in (det.triggers or {}).values()):
+                    det.raw["out_of_order"] = True
+                    self._results.append(det)
+                    return
                 if stage == 1 and self.on_stale is not None:
                     det.raw["stale"] = True
                     try:

@@ -474,7 +474,7 @@ class TriggerMemory:
             if present:
                 if st.last_match is None or frame_ts - st.last_match > MATCH_GAP_S:
                     st.match_since, st.noticed_ts = frame_ts, None
-                st.last_match = frame_ts
+                st.last_match = max(st.last_match or 0.0, frame_ts)   # out-of-order results never move it back
             elif st.last_match is not None and now - st.last_match > max(MATCH_GAP_S, r.notice_memory_s):
                 st.match_since = st.last_match = st.noticed_ts = None
             if present and boxes:
