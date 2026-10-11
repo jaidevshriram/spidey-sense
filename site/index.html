@@ -64,6 +64,15 @@ ul.clean li{margin:0 0 8px}
 pre{background:#1b1b1d;color:#f3f2f0;border-radius:14px;padding:16px;overflow-x:auto;font-size:13.5px;line-height:1.5;margin:10px 0 0}
 code{font-family:ui-monospace,Menlo,Consolas,monospace}
 p code,li code{background:#f1efec;border-radius:5px;padding:1px 5px;font-size:14px}
+.scene{display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:center}
+.scene img{border-radius:14px}
+.scene .phones{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:360px}
+.scene .phones img{aspect-ratio:1179/2556;object-fit:cover;border-radius:12px}
+.scene q{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;color:var(--muted);border-left:3px solid var(--line);padding-left:10px;margin:8px 0;quotes:none;overflow-wrap:anywhere}
+.scenes{display:grid;gap:16px}
+.num{font-size:22px;font-weight:bold}
+video{width:100%;border-radius:14px;background:#000;display:block;aspect-ratio:16/9}
+@media (max-width:760px){.scene{grid-template-columns:1fr}}
 footer{margin:64px 0 0;padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
 @media (max-width:860px){.g3,.flow{grid-template-columns:1fr 1fr}.shots{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:600px){h1{font-size:30px}h2{font-size:25px}.lead{font-size:18px}.g2,.g3,.flow{grid-template-columns:1fr}.shots{grid-template-columns:1fr 1fr;gap:10px}section{padding:40px 0 4px}nav .wrap a.hide-s{display:none}}
@@ -72,7 +81,7 @@ footer{margin:64px 0 0;padding:28px 0 40px;border-top:1px solid var(--line);colo
 <body>
 <nav><div class="wrap">
   <b><img src="assets/app-icon.png" alt="">Spidey Sense</b>
-  <a href="#what">What</a><a href="#how">How</a><a class="hide-s" href="#limits">Limits</a><a href="#app">App</a><a href="#run">Run it</a>
+  <a href="#scenarios">Scenarios</a><a href="#what">What</a><a href="#how">How</a><a class="hide-s" href="#limits">Limits</a><a href="#app">App</a><a href="#run">Run it</a>
 </div></nav>
 
 <header class="wrap hero">
@@ -90,6 +99,53 @@ footer{margin:64px 0 0;padding:28px 0 40px;border-top:1px solid var(--line);colo
   <div class="card figure">
     <img src="assets/demo-screen.jpg" alt="Demo screen: the glasses' view with the gaze ring on the phone, Haiku's box around a cardboard box, and the buzz banner; next to it the live-mirrored phone app" loading="lazy">
     <p class="cap">My gaze (coral ring) is on the phone. Haiku boxes the cardboard box ahead. The Dot buzzes 1.7 s after the frame ("Something in my way", amber). Left: the demo screen's glasses view. Right: the app, mirrored live, showing that run's real buzzes.</p>
+  </div>
+</section>
+
+<section id="scenarios" class="wrap">
+  <p class="kicker">Scenarios</p>
+  <h2>Five moments from the demo.</h2>
+  <p class="sub">The first three are real takes from the hackathon floor. The video below is the 79-second demo.</p>
+  <div class="card figure" style="margin-bottom:16px">
+    <video controls playsinline muted preload="metadata" poster="assets/demo-poster.jpg"><source src="assets/demo.mp4" type="video/mp4"></video>
+    <p class="cap">The demo, 79 s: real test-walk footage side by side with what Spidey saw, then the app.</p>
+  </div>
+  <div class="scenes">
+    <div class="card scene">
+      <img src="assets/scene-wire.jpg" alt="Walking toward a cable while reading a phone, next to the glasses' view with an amber 'Something in my way' banner" loading="lazy">
+      <div><span class="pill">What you missed</span>
+        <h3 style="margin-top:10px">Eyes on the phone, cable on the floor.</h3>
+        <p>Walking and reading. My gaze never left the phone, so when Haiku boxed the power cord across the walkway, the Dot buzzed amber before I reached it.</p>
+        <q>"Black cable and power cord lying on floor ahead"</q></div>
+    </div>
+    <div class="card scene">
+      <img src="assets/demo-screen.jpg" alt="Gaze ring on the phone, a box around a cardboard box ahead, banner 'Something in my way, 1.7 s'" loading="lazy">
+      <div><span class="pill">Only if you haven't noticed</span>
+        <h3 style="margin-top:10px">Saw it: silence. Missed it: a tap.</h3>
+        <p>Rest your eyes on the box for a moment and Spidey stays quiet; a quick glance doesn't count. Keep reading and it taps you.</p>
+        <p><span class="num">1.7 s</span> <span style="color:var(--muted)">from the frame to the buzz</span></p></div>
+    </div>
+    <div class="card scene">
+      <img src="assets/scene-punch.jpg" alt="A friend swings a fist, next to the glasses' view with a red 'Someone about to attack' banner" loading="lazy">
+      <div><span class="pill">When it's urgent</span>
+        <h3 style="margin-top:10px">A fist from the side.</h3>
+        <p>A friend swung a slow punch while I was on my phone. Danger gets a stronger, red buzz, whether or not you saw it coming.</p>
+        <q>"Blurred raised fist and arm moving toward the camera wearer"</q>
+        <p><span class="num">1.8 s</span> <span style="color:var(--muted)">from the frame to the buzz</span></p></div>
+    </div>
+    <div class="card scene">
+      <div class="phones"><img src="assets/home-heart.jpg" alt="App Home with heart rate from Oura" loading="lazy"><img src="assets/event-detail.jpg" alt="Event detail: what Spidey saw and why it buzzed" loading="lazy"></div>
+      <div><span class="pill">Your heartbeat, too</span>
+        <h3 style="margin-top:10px">It feels your body, not just the room.</h3>
+        <p>Heart rate from an Oura ring, and a "Heart racing" trigger that buzzes when it jumps well above your usual. Every buzz lands in the app with what the glasses saw.</p>
+        <p class="cap">App screens; the heart reading shown is sample data.</p></div>
+    </div>
+    <div class="card scene">
+      <div class="phones"><img src="assets/talk-button.jpg" alt="Hold to tell Spidey, recording" loading="lazy"><img src="assets/voice-draft-sheet.jpg" alt="Spidey heard you: a drafted trigger to confirm" loading="lazy"></div>
+      <div><span class="pill">Make it yours</span>
+        <h3 style="margin-top:10px">"Warn me if someone waves at me."</h3>
+        <p>Hold the button and say what to watch for. ElevenLabs transcribes it, Claude writes the trigger, and you confirm when it fires, whether only if you haven't looked, and how it feels.</p></div>
+    </div>
   </div>
 </section>
 

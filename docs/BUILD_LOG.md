@@ -590,3 +590,7 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 
 ### 2026-10-11 13:25 PT: README/site: walking detection now works
 - The Neon IMU started streaming after the reconnect (demo page shows "Walking · 120 steps/min"), so the README limits table, the walking feature bullet, the diagram note and the site's limits/caption no longer say it's broken. Glasses mic is still off.
+
+## 2026-10-11 · Scenarios + re-paced demo video on the site and README
+- No-voiceover cut (55 s) re-paced to 79 s: title cards held on their clean frame (1.7 s) for 1.5-1.8 s, every segment held on a settled frame (0.45 s before its transition) rather than a mid-fade one, 2.2 s end card. Web copy site/assets/demo.mp4 (1280 px, 4.2 MB); full-res ~/Downloads/spidey-video/spidey_sense_demo_paced.mp4. The voiceover cut is not published.
+- site/: new "Scenarios" section (video + five scenes from the demo: cable, box, punch with real side-by-side frames; Oura and talk-to-Spidey with app screens) and a nav link. README: Watch/Project page line + the same Scenarios table. tools/record_demo.py records /demo headless (CDP screencast -> ffmpeg).
