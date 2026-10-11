@@ -25,8 +25,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_spidey._tcp</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connects to the Spidey Sense engine on your Mac</string>
+	<key>SpideyMacHost</key>
+	<string>127.0.0.1</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

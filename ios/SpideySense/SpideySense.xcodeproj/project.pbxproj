@@ -10,12 +10,15 @@
 		3DD150F2362031E696CB742E /* SpideySenseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0954D0BB0B18FCE7C9ABDF6D /* SpideySenseApp.swift */; };
 		5ED87E7AA79F7591BCD0D178 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EAA5D261EC93D6A6E9D0D04 /* EventStream.swift */; };
 		665125A3EB7E72BA3E12CBB5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46A06D06C6C5090B12B02A3 /* SettingsView.swift */; };
+		67FC56EB96F9774829B13DFA /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DE44BEE81A253F8FA48CD3F /* ServerConfig.swift */; };
 		94CB4848DF6EDA5EE439B7D4 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C6C26B4938CED3BCAE6D54 /* Model.swift */; };
+		AAD3AFC3025D30E8D2F9C5B4 /* HapticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F681C6798CE5B8235239A9FB /* HapticsView.swift */; };
 		B167AA94534F6491CD5EEFAA /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 402CE8EF727C61682D425A19 /* DevicesView.swift */; };
 		B336346F212E268F8411F177 /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB70254162A5B6CF34E181CE /* MockData.swift */; };
 		B49021B1D5E93E7E7FF627C8 /* SensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3DB8512624D457A26D58539 /* SensesView.swift */; };
 		BB54A6B19BA0B1A3DC133749 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8C5F83C5B37487B2A69CF0 /* Protocol.swift */; };
 		CD660FC92BA8E23AA6A82A1B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48A583B0461BF407DB41CFEE /* ContentView.swift */; };
+		FD20A073545FAECD2B97925D /* Waveforms.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4499D12938B0EB9445A1ACEF /* Waveforms.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,11 +27,14 @@
 		21C6C26B4938CED3BCAE6D54 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
 		3F75FFAC84C7D5F5C028B7FF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		402CE8EF727C61682D425A19 /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
+		4499D12938B0EB9445A1ACEF /* Waveforms.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Waveforms.swift; sourceTree = "<group>"; };
 		48A583B0461BF407DB41CFEE /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7DE44BEE81A253F8FA48CD3F /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
 		8EAA5D261EC93D6A6E9D0D04 /* EventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStream.swift; sourceTree = "<group>"; };
 		A3DB8512624D457A26D58539 /* SensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensesView.swift; sourceTree = "<group>"; };
 		D46A06D06C6C5090B12B02A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		DE8C5F83C5B37487B2A69CF0 /* Protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocol.swift; sourceTree = "<group>"; };
+		F681C6798CE5B8235239A9FB /* HapticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsView.swift; sourceTree = "<group>"; };
 		FB70254162A5B6CF34E181CE /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -39,13 +45,16 @@
 				48A583B0461BF407DB41CFEE /* ContentView.swift */,
 				402CE8EF727C61682D425A19 /* DevicesView.swift */,
 				8EAA5D261EC93D6A6E9D0D04 /* EventStream.swift */,
+				F681C6798CE5B8235239A9FB /* HapticsView.swift */,
 				3F75FFAC84C7D5F5C028B7FF /* Info.plist */,
 				FB70254162A5B6CF34E181CE /* MockData.swift */,
 				21C6C26B4938CED3BCAE6D54 /* Model.swift */,
 				DE8C5F83C5B37487B2A69CF0 /* Protocol.swift */,
 				A3DB8512624D457A26D58539 /* SensesView.swift */,
+				7DE44BEE81A253F8FA48CD3F /* ServerConfig.swift */,
 				D46A06D06C6C5090B12B02A3 /* SettingsView.swift */,
 				0954D0BB0B18FCE7C9ABDF6D /* SpideySenseApp.swift */,
+				4499D12938B0EB9445A1ACEF /* Waveforms.swift */,
 			);
 			path = SpideySense;
 			sourceTree = "<group>";
@@ -74,6 +83,7 @@
 			buildConfigurationList = A131AD43DE5685D125C522E9 /* Build configuration list for PBXNativeTarget "SpideySense" */;
 			buildPhases = (
 				08D1187A41FD99F7A0A04E1A /* Sources */,
+				A04D0939E6AFDB6C34F0B702 /* Stamp Mac IP */,
 			);
 			buildRules = (
 			);
@@ -119,6 +129,28 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A04D0939E6AFDB6C34F0B702 /* Stamp Mac IP */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Mac IP";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash \"$SRCROOT/scripts/stamp_mac_ip.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		08D1187A41FD99F7A0A04E1A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -127,12 +159,15 @@
 				CD660FC92BA8E23AA6A82A1B /* ContentView.swift in Sources */,
 				B167AA94534F6491CD5EEFAA /* DevicesView.swift in Sources */,
 				5ED87E7AA79F7591BCD0D178 /* EventStream.swift in Sources */,
+				AAD3AFC3025D30E8D2F9C5B4 /* HapticsView.swift in Sources */,
 				B336346F212E268F8411F177 /* MockData.swift in Sources */,
 				94CB4848DF6EDA5EE439B7D4 /* Model.swift in Sources */,
 				BB54A6B19BA0B1A3DC133749 /* Protocol.swift in Sources */,
 				B49021B1D5E93E7E7FF627C8 /* SensesView.swift in Sources */,
+				67FC56EB96F9774829B13DFA /* ServerConfig.swift in Sources */,
 				665125A3EB7E72BA3E12CBB5 /* SettingsView.swift in Sources */,
 				3DD150F2362031E696CB742E /* SpideySenseApp.swift in Sources */,
+				FD20A073545FAECD2B97925D /* Waveforms.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -264,6 +299,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpideySense/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -284,6 +320,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpideySense/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

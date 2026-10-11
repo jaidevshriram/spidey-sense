@@ -25,7 +25,25 @@ final class EventStream {
     /// Local record of Useful/Noisy swipes, keyed by HapticEvent.key.
     private(set) var verdicts: [String: Verdict] = [:]
 
+    // System rows for the Log (engine `system` messages + local WebSocket drops/reconnects), newest first.
+    private(set) var systemRows: [SystemRow] = []
+    /// Successful reconnects since the last connect(to:) call.
+    private(set) var reconnects = 0
+
+    // Haptics tab state.
+    private(set) var telemetry: HapticTelemetry?
+    private(set) var telemetryHistory: [HapticTelemetry] = []   // last 120 s, oldest first
+    private(set) var link: LinkInfo?                             // latest Mac -> El Jefe -> Dot link check
+    private(set) var lastPing: PingResult?                       // periodic (flash: false)
+    private(set) var lastFullPing: PingResult?                   // "Ping all" (flash: true)
+    private(set) var ackLog: [AckEntry] = []                     // newest first, max 30
+    private(set) var lastThermalAck: AckMessage?
+    private var pingSeq = 0
+    private var flashPings = Set<Int>()
+
     private var url: URL?
+    /// The URL last passed to connect(to:), for banners.
+    private(set) var urlString: String?
     private var task: URLSessionWebSocketTask?
     private var loop: Task<Void, Never>?
     private var seen = Set<String>()
@@ -33,25 +51,43 @@ final class EventStream {
 
     var isLive: Bool { status == .connected }
 
+    /// Called before each reconnect attempt; returns the URL to use (e.g. after a fresh Bonjour browse).
+    var resolveURL: (() async -> String?)?
+
     func connect(to urlString: String) {
         loop?.cancel()
         task?.cancel(with: .goingAway, reason: nil)
+        self.urlString = urlString.trimmingCharacters(in: .whitespaces)
         url = URL(string: urlString.trimmingCharacters(in: .whitespaces))
+        reconnects = 0
         guard let url else { status = .disconnected; lastError = "Invalid URL"; return }
         loop = Task { await run(url) }
     }
 
-    private func run(_ url: URL) async {
+    private func run(_ startURL: URL) async {
+        var url = startURL
         var backoff = 1.0
+        var everConnected = false
+        var droppedLogged = false   // one "unreachable" row per offline streak
         while !Task.isCancelled {
             status = .connecting
             let ws = URLSession.shared.webSocketTask(with: url)
             task = ws
             ws.resume()
+            var wasConnected = false
             do {
                 while !Task.isCancelled {
                     let msg = try await ws.receive()
-                    if status != .connected { status = .connected; lastError = nil; backoff = 1.0 }
+                    if status != .connected {
+                        status = .connected; lastError = nil; backoff = 1.0; wasConnected = true
+                        if everConnected {
+                            reconnects += 1
+                            logSystem(.info, "Reconnected to the Mac (\(url.host() ?? "?")), reconnect #\(reconnects)")
+                        } else if droppedLogged {
+                            logSystem(.info, "Connected to the Mac (\(url.host() ?? "?"))")
+                        }
+                        everConnected = true; droppedLogged = false
+                    }
                     switch msg {
                     case .string(let s): handle(Data(s.utf8))
                     case .data(let d): handle(d)
@@ -64,10 +100,23 @@ final class EventStream {
             ws.cancel(with: .goingAway, reason: nil)
             if task === ws { task = nil }
             if Task.isCancelled { break }
+            if wasConnected {
+                logSystem(.error, "WebSocket to the Mac dropped: \(lastError ?? "closed"). Reconnecting…")
+                droppedLogged = true
+            } else if !droppedLogged {
+                logSystem(.warning, "Can't reach the Mac at \(url.absoluteString): \(lastError ?? "no answer"). Retrying…")
+                droppedLogged = true
+            }
             status = .disconnected
+            telemetry = nil
             devicesAreSample = true   // device cards fall back to sample data while offline
             try? await Task.sleep(for: .seconds(backoff))
             backoff = min(backoff * 2, 5)
+            if let resolveURL, let s = await resolveURL(), !Task.isCancelled,
+               let u = URL(string: s), u != url {
+                url = u; self.url = u; urlString = s
+                logSystem(.info, "Trying the engine at \(s)")
+            }
         }
     }
 
@@ -91,12 +140,20 @@ final class EventStream {
         case "settings":
             if let s = try? dec.decode(EngineSettings.self, from: data) { settings = s }
         case "ack":
-            if let a = try? dec.decode(AckMessage.self, from: data) {
-                let what = [a.for, a.name].compactMap { $0 }.joined(separator: " ")
-                lastAck = (a.ok ?? false) ? "\(what): \(a.detail ?? "ok")" : "\(what) failed: \(a.error ?? "?")"
-            }
+            if let a = try? dec.decode(AckMessage.self, from: data) { handleAck(a) }
         case "error":
-            lastAck = "error: \(obj["error"] as? String ?? "?")"
+            let err = obj["error"] as? String ?? "?"
+            lastAck = "error: \(err)"
+            logAck(kind: obj["for"] as? String ?? "error", ok: false, ms: nil, note: err)
+        case "haptic.telemetry":
+            if let t = try? dec.decode(HapticTelemetry.self, from: data) { addTelemetry(t) }
+        case "link.pong":
+            if let p = try? dec.decode(LinkPong.self, from: data) { handlePong(p) }
+        case "system":
+            if let m = try? dec.decode(SystemMessage.self, from: data) {
+                logSystem(SystemRow.Level(rawValue: m.level ?? "info") ?? .info, m.text ?? "(no text)",
+                          ts: m.ts, local: false)
+            }
         default:
             break
         }
@@ -104,6 +161,53 @@ final class EventStream {
 
     private func setDevices(_ d: [DeviceInfo]) {
         devices = d; devicesAreSample = false; devicesUpdatedAt = Date()
+        if let l = d.first(where: { $0.id == "el_jefe" })?.link, l.transport != nil { link = l }
+    }
+
+    private func handleAck(_ a: AckMessage) {
+        let kind = a.for ?? "?"
+        if kind == "haptic.subscribe" { return }   // every 2 s: not interesting
+        let what = [a.for, a.name].compactMap { $0 }.joined(separator: " ")
+        lastAck = (a.ok ?? false) ? "\(what): \(a.detail ?? "ok")" : "\(what) failed: \(a.error ?? "?")"
+        var note = a.ok == false ? a.error : a.detail
+        if kind == "haptic.thermal" {
+            lastThermalAck = a
+            if a.capped == true { note = "capped at \(a.value.map { String(format: "%.0f", $0) } ?? "40") °C" }
+            else if let m = a.mode, let v = a.value { note = "\(m) \(String(format: "%g", v))" }
+        }
+        logAck(kind: what, ok: a.ok ?? false, ms: a.ms, note: note)
+    }
+
+    private func logAck(kind: String, ok: Bool, ms: Double?, note: String?) {
+        ackLog.insert(AckEntry(date: Date(), kind: kind, ok: ok, ms: ms, note: note), at: 0)
+        if ackLog.count > 30 { ackLog.removeLast(ackLog.count - 30) }
+    }
+
+    private func addTelemetry(_ t: HapticTelemetry) {
+        telemetry = t
+        telemetryHistory.append(t)
+        let cutoff = t.ts - 120
+        if let i = telemetryHistory.firstIndex(where: { $0.ts >= cutoff }), i > 0 { telemetryHistory.removeFirst(i) }
+    }
+
+    private func handlePong(_ p: LinkPong) {
+        if let l = p.link { link = l }
+        guard let tApp = p.tApp else { return }
+        let r = PingResult(date: Date(), flash: p.id.map { flashPings.contains($0) } ?? false,
+                           rttMs: (Date().timeIntervalSince1970 - tApp) * 1000,
+                           macMs: p.macMs, bleMs: p.bleMs, flashMs: p.flashMs)
+        if r.flash {
+            lastFullPing = r
+            if let id = p.id { flashPings.remove(id) }
+            logAck(kind: "link.ping (all)", ok: p.link?.ok ?? true, ms: r.rttMs, note: p.link?.reason)
+        } else {
+            lastPing = r
+        }
+    }
+
+    func logSystem(_ level: SystemRow.Level, _ text: String, ts: Double? = nil, local: Bool = true) {
+        systemRows.insert(SystemRow(ts: ts ?? Date().timeIntervalSince1970, level: level, text: text, local: local), at: 0)
+        if systemRows.count > 200 { systemRows.removeLast() }
     }
 
     private func add(_ dict: [String: Any]) {
@@ -117,7 +221,7 @@ final class EventStream {
         }
     }
 
-    func clear() { events.removeAll(); seen.removeAll() }
+    func clear() { events.removeAll(); seen.removeAll(); systemRows.removeAll() }
 
     // MARK: - Sending
 
@@ -154,6 +258,33 @@ final class EventStream {
     func feedback(_ e: HapticEvent, _ v: Verdict) {
         verdicts[e.key] = v
         if !e.isSample { send(FeedbackMessage(eventId: e.id, ts: e.ts, verdict: v)) }
+    }
+
+    // MARK: - Haptics tab
+
+    /// Sends a haptics-tab message. Offline: nothing is sent and the command log says so.
+    @discardableResult
+    func haptic<T: Encodable>(_ msg: T, label: String) -> Bool {
+        let ok = send(msg)
+        if !ok { logAck(kind: label, ok: false, ms: nil, note: "not connected: nothing sent") }
+        return ok
+    }
+
+    /// Keeps telemetry flowing (and the engine's "thermal off when the app goes away" timer fed).
+    func subscribeHaptics() {
+        guard isLive else { return }
+        send(HapticSubscribe(on: true))
+    }
+
+    /// `flash: false` = silent health check every 2 s; `flash: true` = "Ping all" (Dot flashes green).
+    func ping(flash: Bool) {
+        guard isLive else {
+            if flash { logAck(kind: "link.ping (all)", ok: false, ms: nil, note: "not connected: nothing sent") }
+            return
+        }
+        pingSeq += 1
+        if flash { flashPings.insert(pingSeq) }
+        send(LinkPing(id: pingSeq, tApp: Date().timeIntervalSince1970, flash: flash))
     }
 
     func command(_ c: CommandMessage) {

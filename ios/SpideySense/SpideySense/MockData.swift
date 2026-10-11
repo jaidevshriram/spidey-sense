@@ -24,7 +24,8 @@ enum MockData {
             DeviceInfo(id: "mac_hub", name: "Mac hub", kind: "websocket", status: "disconnected",
                        detail: "Not connected (sample)", lastSeen: nil),
             DeviceInfo(id: "el_jefe", name: "DataFeelCE", kind: "haptics", status: "connected",
-                       detail: "datafeel-ble via the Mac (ble)", transport: "ble", sink: "datafeel-ble", lastSeen: now - 4),
+                       detail: "datafeel-ble via the Mac (ble)", transport: "ble", sink: "datafeel-ble", lastSeen: now - 4,
+                       link: MockData.link),
             DeviceInfo(id: "neon", name: "Neon", kind: "eye_tracker", status: "connected",
                        detail: "source: neon (realtime)", lastSeen: now - 1),
             DeviceInfo(id: "oura", name: "Oura", kind: "heart_rate", status: "coming_soon",
@@ -51,4 +52,23 @@ enum MockData {
             ])
         }
     }()
+
+    // MARK: - Haptics tab (offline demo)
+
+    static let link = LinkInfo(transport: "ble", device: "DataFeelCE", rssi: -41, ok: true, ms: 62,
+                               lastSeen: Date().timeIntervalSince1970 - 1, dots: [3], addresses: [3],
+                               linkUp: true, reason: "ok")
+
+    /// Gently varying skin/sink temperatures for the last `seconds`, 2 Hz, ending at `now`.
+    static func telemetryHistory(now: Date, seconds: Double = 120) -> [HapticTelemetry] {
+        let end = now.timeIntervalSince1970.rounded(.down)
+        return stride(from: end - seconds, through: end, by: 0.5).map { telemetry(at: $0) }
+    }
+
+    static func telemetry(at ts: Double) -> HapticTelemetry {
+        let skin = 31.2 + 0.6 * sin(ts / 9) + 0.15 * sin(ts / 2.3)
+        let sink = 30.1 - 0.3 * sin(ts / 9) + 0.1 * cos(ts / 3.1)
+        return HapticTelemetry(ts: ts, skinC: skin, sinkC: sink, thermalPower: 0, lastCmdMs: 58, intensity: 1,
+                               thermal: nil, limits: ThermalLimits())
+    }
 }

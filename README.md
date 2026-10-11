@@ -35,7 +35,7 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `haptics/` | DataFeel Dots: `spidey_haptics.py` (patterns, CLI), `dots/ble.py` (Bluetooth transport), `dots/fastfire.py` (2-write triggers), tests, `vendor/datafeel-python` (MIT SDK) |
 | `neon/` | `neon_app`: Pupil Labs Neon gaze + scene sources (Capture over USB, or Companion phone over Wi-Fi) |
 | `vlm/` | vision test scenes, latency report (detector code is `backend/spidey/detectors.py`) |
-| `ios/` | SwiftUI app: Log / Senses / Devices / Settings |
+| `ios/` | SwiftUI app: Log / Senses / Devices / Haptics / Settings (zero-config connect) |
 | `docs/` | `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped) |
 | `scripts/` | setup, API key, playground, Bluetooth test/latency |
 
@@ -75,8 +75,16 @@ python3 backend/run.py --config backend/configs/config.neon.yaml --sink datafeel
 ```
 If discovery fails, set `source.host: <phone ip>` in `config.neon.yaml`.
 
-iOS: open `ios/SpideySense/SpideySense.xcodeproj` (or `cd ios/SpideySense && xcodegen generate`), pick your
-signing team, run, and set the server URL to `ws://<mac-ip>:8765` in Settings.
+**iOS app: zero setup.** Open `ios/SpideySense/SpideySense.xcodeproj` (or `cd ios/SpideySense && xcodegen generate`)
+and press Run. Phone and Mac on the same Wi-Fi is the only assumption:
+- The app finds the engine by itself: a custom URL (if you set one) → **Bonjour** (the engine advertises
+  `_spidey._tcp`) → the Mac's IP stamped into the build → `127.0.0.1` in the simulator. It re-searches after a drop.
+- Pressing Run also starts the demo engine (fakes, console) if nothing is listening on 8765. Bluetooth runs still go via Terminal.
+- On a real iPhone, pick your signing team once and allow Local Network on first launch.
+
+Tabs: **Log** (why each buzz fired + link-drop system rows) · **Senses** (rules) · **Devices** (live El Jefe health) ·
+**Haptics** (Link check: Phone→Mac / Mac→El Jefe / El Jefe→Dot with ms, Ping all; light, vibration, thermal with a live
+chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
 
 ## Measured so far
 

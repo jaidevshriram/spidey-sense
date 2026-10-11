@@ -63,6 +63,17 @@ struct DeviceCard: View {
                 }
                 Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
                 if let d = device.detail { Text(d).font(.footnote) }
+                if let l = device.link, l.transport != nil {
+                    let bits = [l.ms.map { "read \(fmtMs($0)) ms" }, l.rssi.map { "rssi \(Int($0)) dBm" },
+                                l.dots.map { "dots \($0.map(String.init).joined(separator: ","))" }].compactMap { $0 }
+                    if !bits.isEmpty {
+                        Text(bits.joined(separator: " · ")).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    if let r = l.reason, !r.isEmpty, r != "ok" {
+                        Label(r, systemImage: "exclamationmark.triangle.fill").font(.caption)
+                            .foregroundStyle(l.ok == false ? .red : .orange)
+                    }
+                }
                 Text(lastSeen).font(.caption).foregroundStyle(.tertiary)
             }
         }

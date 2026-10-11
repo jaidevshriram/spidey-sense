@@ -207,3 +207,62 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   found the Dot at address 3, LED green in 121 ms, skin 29.4 °C. **The monorepo's BLE path is verified on hardware.**
 - 5 DataFeel kits in range: CE (ours), 1E, 3A, 32, 36.
 - The old `~/Downloads/interface-hackathon` is kept as a backup (Jaidev: don't delete).
+
+### 17:43 iOS: Haptics tab (link check) + system rows in the Log + zero-config server URL
+- **Haptics tab** (5th tab, `HapticsView.swift`): a native port of the Haptic Playground over the engine WebSocket (protocol: docs/protocol.md
+  "Haptics tab + link check"). Link check card: Phone→Mac (link.ping flash:false every 2 s; app↔Mac = RTT − mac_ms; reconnect count),
+  Mac→El Jefe (transport, device, rssi, last seen, register-read ms, server reason), El Jefe→Dot (answering vs expected addresses);
+  green/amber (app↔Mac > 300 ms, BLE > 400 ms, stale > 6 s)/red. "Ping all" (flash:true) shows total and per-hop ms. Then
+  Connection summary + master intensity, Light (ColorPicker, mode, 8 tappable LEDs), Vibration (presets, 8-slot sequence builder over
+  the 123 SDK waveform names in `Waveforms.swift` + rests, manual Hz/intensity), Thermal (intensity, target stepper with the 40 °C cap,
+  Swift Charts skin/sink over 120 s, session/auto-off countdown, time to ±2/±4 °C/target, rate, safety limits), a command log (last
+  30 acks with ms), and a pinned red STOP ALL. Sends haptic.subscribe every 2 s while visible. Offline: sample telemetry + banner, controls disabled.
+- **Log**: `system` messages from the engine and this phone's WebSocket drops/reconnects are shown as system rows (gray/amber/red + icon,
+  no swipe feedback, hidden when a sense filter is on). Plus a "Can't reach the Spidey engine at <url>" banner after 3 s offline.
+- **Devices**: the El Jefe card shows link ms/rssi/dots and the reason from `el_jefe.link`.
+- **Protocol.swift**: LinkInfo, HapticTelemetry/ThermalSession/ThermalLimits, LinkPong, SystemMessage, a lenient AckMessage, and the
+  app→server haptic.* / link.ping encoders. Every field is decoded leniently (missing/null/mistyped → nil).
+- **Zero-config URL** (`ServerConfig.swift`): the stored `serverURL` is "" for automatic. Order: custom → Bonjour `_spidey._tcp`
+  (~2 s, host+port from the service, IPv4) → iPhone: build-time `SpideyMacHost` → Simulator: ws://127.0.0.1:8765. Re-browses before
+  each reconnect. A one-time migration resets the old placeholder (and 127.0.0.1 on a device) to automatic. Settings shows the URL +
+  source + "Reset to automatic". project.yml: `NSBonjourServices`, `SpideyMacHost`, a "Stamp Mac IP" post-build script
+  (`ios/SpideySense/scripts/stamp_mac_ip.sh`, PlistBuddy into the built Info.plist; `ENABLE_USER_SCRIPT_SANDBOXING: NO`), and a shared
+  scheme whose Run pre-action (`scripts/start_engine.sh`) starts the demo engine if nothing listens on 8765 (logs/xcode_preaction.log).
+- Commands: `cd ios/SpideySense && xcodegen generate && xcodebuild -project SpideySense.xcodeproj -scheme SpideySense -sdk iphonesimulator
+  -destination 'id=<sim>' -derivedDataPath <scratch>/dd CODE_SIGNING_ALLOWED=NO build` → **BUILD SUCCEEDED**, no Swift warnings.
+  Test engine: `.venv/bin/python backend/run.py --config <copy of config.yaml with port 8799, log logs/x.jsonl, rules_file rules.x.json>` (console sink).
+- Verified in the iPhone 16 simulator against the 8799 engine: link check all green (RTT ~2–5 ms, mock read 0.0 ms, 1/1 Dot); Ping all
+  per-hop ms; preset, sequence, LED (global + index 3), thermal target 55 → ack `capped`, "Engine capped the target at 40 °C", chart
+  rising, session countdown, +2 °C in 8.8 s; STOP ALL acked; killing the engine → red "WebSocket dropped" row → re-browse → reconnect
+  info rows; a 30 s thermal auto-off → amber engine `system` row. Zero-config: a clean install (uninstall + `defaults delete`) connected
+  to 127.0.0.1:8765 with no settings; with the 8799 engine advertising, it resolved Bonjour → ws://10.104.7.226:8799 ("auto: found Mac on
+  network (Spidey Sense on MacBook-Pro-2)"). The built Info.plist has `SpideyMacHost = 10.104.7.226`. Pre-action script: with 8765 busy →
+  "engine already running on 8765, skip"; with stubs (port free) → started in the background, returned in 0 s, exit 0.
+- Screenshots: ios/screenshots/haptics.png, haptics-thermal.png, log-system.png, log-system-engine.png, zero-config.png, settings-bonjour.png.
+- Gotchas: `simctl uninstall` does **not** clear the app's defaults; use `simctl spawn <dev> defaults delete com.jaidev.spideysense`.
+  Swipe momentum moves the layout after a screenshot, so wait ~2 s before tapping. Something else installed an intermediate build onto the
+  test simulator at 17:32 (an install that targeted "booted"?), which killed the app once. Pre-actions only run from Xcode's Run, not xcodebuild.
+
+### 17:20–17:35 Wireless-link testing backend + master intensity (engine)
+- `backend/spidey/haptic_control.py` (`HapticControl`): one lock for the El Jefe link; master intensity via
+  waveform-family swaps (e.g. BUZZ1_P100 → BUZZ3_P60 → BUZZ5_P20; DOUBLE_CLICK → SHORT_DOUBLE_CLICK_STRONG*; 0 = light only);
+  LED/sequence/manual/preset/thermal with server-side safety (40 °C cap, 30 s auto-off, 41 °C cut-off, off when the
+  app stops subscribing); 2 Hz `haptic.telemetry`; a health check (register read every 2 s); `link.ping`; `system` events on link loss.
+- DataFeel sinks expose `control` (real dots); the console sink uses mock dots so the app's Haptics tab works without hardware.
+- Engine handlers: `haptic.*`, `haptic.subscribe`, `link.ping`; El Jefe device status from the real health check.
+  Protocol: `docs/protocol.md` → "Haptics tab + link check".
+- **Hardware test over BLE** (`./scripts/engine_link_test.sh`, Terminal): El Jefe connected · dots [3] · read 62 ms ·
+  RSSI −46 dBm; link.ping RTT ≈ 60 ms (BLE ≈ 55–90 ms); LED 128 ms; `urgent` at intensity 0.3 → 253 ms; stop_all OK.
+
+### 17:30 Neon via the Companion phone is the default
+- `NeonSource` default `mode: realtime`; `backend/configs/config.neon.yaml`; `neon/check_companion.py` +
+  `scripts/neon_check.sh [ip] [--mock]` (discover/IP, battery, fps, gaze Hz, worn %, frame→Mac delay, live view).
+  Tested: the mock view and the engine on the Neon source path in mock mode. Discovery reports "no Companion found" (no phone on the network yet).
+
+### 17:35 Bonjour
+- `spidey/server.py` advertises `_spidey._tcp` ("Spidey Sense on MacBook-Pro-2", port 8765) via python-zeroconf.
+  `dns-sd -B _spidey._tcp local.` sees it.
+
+### 17:50 Demo engine restarted with current code; Haptics tab checked in Jaidev's simulator
+- Relaunched the app on the iPhone 16 Pro simulator with `-tab haptics`: Link check all green (Phone→Mac RTT 1.1 ms,
+  mock El Jefe, Dot 3 answering) via the automatic URL, with no settings.

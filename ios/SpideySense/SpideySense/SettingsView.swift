@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Binding var serverURL: String
+    @Binding var serverURL: String          // "" = automatic
     let stream: EventStream
+    let effectiveURL: String
+    let source: ServerSource
     @State private var draft = ""
     @State private var intensity = 1.0
     @State private var confirmStop = false
@@ -12,7 +14,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("ws://192.168.1.10:8765", text: $draft)
+                    TextField("Automatic (\(effectiveURL))", text: $draft)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($urlFocused)
                         .onSubmit(save)
@@ -21,8 +23,15 @@ struct SettingsView: View {
                         Spacer()
                         Button("Save & reconnect", action: save)
                     }
+                    LabeledContent("Using") {
+                        Text(effectiveURL).font(.footnote.monospaced()).textSelection(.enabled)
+                    }
+                    LabeledContent("Source", value: source.label)
+                    if source == .custom {
+                        Button("Reset to automatic") { draft = ""; urlFocused = false; serverURL = "" }
+                    }
                 } header: { Text("Engine server") } footer: {
-                    Text("Mac LAN IP: run `ipconfig getifaddr en0`, then ws://<ip>:8765.")
+                    Text("Leave empty for automatic: the app finds the engine on the network (Bonjour), else uses the Mac's IP from build time (iPhone) or 127.0.0.1 (Simulator). Custom: ws://<mac-ip>:8765 (`ipconfig getifaddr en0`).")
                 }
                 if let err = stream.lastError, !stream.isLive {
                     Section("Last error") { Text(err).font(.footnote).foregroundStyle(.secondary) }
@@ -39,7 +48,7 @@ struct SettingsView: View {
                         Label("Quiet mode", systemImage: "moon")
                     }
                 } header: { Text("Haptics") } footer: {
-                    Text("Quiet mode logs every trigger but doesn't buzz. Intensity is stored by the engine; applying it to the dots is still TODO.")
+                    Text("Quiet mode logs every trigger but doesn't buzz. Master intensity scales the Dot's waveforms (weaker variants); 0 = light only.")
                 }
 
                 Section("Test pattern") {
@@ -65,7 +74,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { draft = serverURL; intensity = stream.settings.intensity }
+            .onAppear { draft = ServerConfig.isAutomatic(serverURL) ? "" : serverURL; intensity = stream.settings.intensity }
             .onChange(of: stream.settings.intensity) { _, v in intensity = v }
             .alert("Stop sent", isPresented: $confirmStop) { Button("OK") {} } message: {
                 Text(stream.isLive ? "Asked the Mac to stop all haptics." : "Not connected: nothing to stop.")
@@ -75,6 +84,7 @@ struct SettingsView: View {
 
     private func save() {
         urlFocused = false
-        if draft == serverURL { stream.connect(to: draft) } else { serverURL = draft }
+        let new = draft.trimmingCharacters(in: .whitespaces)   // "" = automatic
+        if new == serverURL { stream.connect(to: effectiveURL) } else { serverURL = new }
     }
 }

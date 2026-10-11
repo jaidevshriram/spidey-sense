@@ -50,3 +50,36 @@ struct HapticEvent: Identifiable {
         return s
     }
 }
+
+/// A system row in the Log: from the engine (`system` message) or local (WebSocket drop/reconnect).
+struct SystemRow: Identifiable, Hashable {
+    enum Level: String { case info, warning, error }
+    let id = UUID()
+    let ts: Double
+    let level: Level
+    let text: String
+    let local: Bool            // true = logged by this phone, not the engine
+
+    var date: Date { Date(timeIntervalSince1970: ts) }
+}
+
+/// One reply to a haptics-tab command, for the tab's command log.
+struct AckEntry: Identifiable, Hashable {
+    let id = UUID()
+    let date: Date
+    let kind: String           // e.g. haptic.led, command set_intensity
+    let ok: Bool
+    let ms: Double?
+    let note: String?          // error or detail
+}
+
+/// Result of one link.ping round trip.
+struct PingResult: Hashable {
+    let date: Date
+    let flash: Bool
+    let rttMs: Double          // now - t_app
+    let macMs: Double?         // time spent inside the engine
+    let bleMs: Double?         // Mac <-> El Jefe <-> Dot register read
+    let flashMs: Double?       // LED flash write
+    var appMacMs: Double { max(0, rttMs - (macMs ?? 0)) }
+}
