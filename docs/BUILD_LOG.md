@@ -318,3 +318,83 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   baseline: call 1217 / 1320 ms, frame→cue **1283 / 1410 ms** (median/p90), 34 results, 34/34 correct.
   optimised: early fields 897 ms, full 1151 ms; frame→cue **921 / 1203 ms**; 125 results (~3/s); 125/125 correct.
 - Prompt caching: `cache_read_input_tokens` = 0. The ~590-token prompt is under Haiku's minimum cacheable length, so it's a no-op for now.
+
+### 18:22 PT Radar sense client (`spidey.radar.RadarSense`), read-only on radar-lab's stream
+- New: `backend/spidey/radar.py`, `backend/tests/fake_radar_server.py`, `backend/tests/test_radar_client.py`,
+  `radar/README.md`, `radar/NOTICE.md`. No changes to engine/rules (integration is a separate step) or to `~/Downloads/radar-lab`.
+- `RadarSense(url="ws://localhost:8090", on_target=None, side_sign=1)`: background thread, websockets client to
+  `<url>/ws`, reconnect backoff 1→5 s, never blocks/raises in `__init__`. `on_target(dict)` for every non-calm update plus one
+  `calm` (`state, distance_m, speed_mps` (+ = toward), `angle_deg, side, confirmed, ts, track_id, urgency, server_ts`).
+  `status()` → `connected, url, mode (board|sim|unknown from hello.info), last, rate_hz, since_last_s`. `close()`.
+  Parses radar-lab's legacy `server.py` frames (`target.dist/speed/angle`, `state`) and the tracked pipeline schema
+  (`primary`, `tracks[].status`, `urgency`); `confirmed` = server's when available, else same state ≥ 3 updates.
+- CLI / calibration walk: `cd backend && ../.venv/bin/python -m spidey.radar [--side-sign -1] [--seconds N]` (steps in radar/README.md).
+- Tests: `cd backend && ../.venv/bin/python -m unittest tests.test_radar_client -v` → 10/10 OK in 52 s (no pytest in the venv).
+  Approach-from-left: confirmed approaching at ~2.85 m (left, 0.60 m/s) → confirmed too_close at 0.5 m → calm; walk past
+  (arc at 2.5 m): no confirmed approach; walk away: no callbacks; side_sign −1 mirrors; reconnect after server appears.
+  Latency server send → on_target: median 0.36 ms, p95 1.07 ms, max 17.8 ms (n=456, localhost).
+- Gotcha: the legacy server flags a straight-line walk-by at 2.5 m as approaching (radial −0.6 m/s at the ends):
+  fake `walk_by_line` → 34 confirmed-approaching callbacks. radar-lab's tracker (CPA corridor) is the fix.
+- radar-lab `server.py --sim` on :8090 (started briefly, then stopped; nothing else was listening): 17–17.5 Hz,
+  mode=sim, confirmed approach (right side, ~2.1 m, 1.03 m/s) 3 frames after connect; the sim's state stays `approaching`.
+- Board `/dev/cu.usbmodem101` is present (not opened).
+
+### 18:40 PT iOS app v3: gaze modes, over-time triggers, radar, thumbnails, pause, source/sink header
+- Files (ios/ only): `Protocol.swift` (GazeMode, TrendConfig, RuleCondition radar keys, SenseRule gaze_mode / notice_memory_s /
+  temporal / trend, SenseSource.radar, StatusMessage/SourceStatus/RadarStatus/RadarReading/AboutInfo, DeviceInfo lenient + neon `stats`,
+  `command pause`, `hello.status`), `Model.swift` (event sensor/thumb/radar/gaze_mode/looked_at_s_ago/paused/trend + EventTrend),
+  `EventStream.swift` (status, paused mirror + revert on rejected ack, keep v3 fields if an engine drops them from its echo),
+  new `EngineHeader.swift` (on every tab: source chip Neon live · N fps / Fake source / Disconnected, sink chip Dot · BLE / No Dot — console,
+  radar chip, pause switch + paused banner), `ContentView.swift` (Log rows: 56 pt thumb, camera/radar icon, trigger, why, latency,
+  radar "1.4 m · 0.6 m/s · left", trend "gap 0.8 → 0.4 → 0.1 body-heights · closer ×3", paused/touching tags; detail sheet shows
+  the full frame above the JSON), `SensesView.swift` (Camera/Radar sensor, 3-way gaze picker, noticed memory 1–10 s, Watch over time
+  + ticks 2–6 + sensitivity low/medium/high, radar Within X m / Faster than Y m/s, 👁/⏱/📡 badges), `DevicesView.swift` (Neon + Radar
+  card details), `SettingsView.swift` (About: config/model/commit/sink/app version), `MockData.swift` (the 5 templates with the fixed ids,
+  generated placeholder thumb, radar + trend + paused sample events, sample status). Screenshots: `ios/screenshots/v3-*.png`.
+- Build: `xcodebuild … -destination id=<iPhone 16> CODE_SIGNING_ALLOWED=NO build` → BUILD SUCCEEDED.
+- Live on a private engine (port 8799, console sink, fake source, Bonjour disabled, temp triggers file): hello.status + status → orange
+  "Fake source" / "No Dot — console" chips; thumbs decode in the Log; pause switch → `pause on/off` in the engine log, paused events get
+  the tag, relaunch while paused shows the switch on; Big cat (look) template saved from the app round-trips with gaze_mode/temporal.
+  Sample-only: radar events + radar status card details, trend line, real Neon numbers (battery/delay), BLE sink chip.
+
+### 18:45 Engine v3 (vision side): gaze modes from real gaze, temporal trend layer, radar hook, pause/status, desk test
+- **Gaze modes** (`rules.py`): per trigger `gaze_mode` unseen | looking_at | any (back-compat: `if.unseen` → unseen, `if.seen` → looking_at)
+  + `notice_memory_s` (3). Haiku now returns a `bbox` per matched custom trigger. `TriggerMemory` keeps 5 s of gaze (0..1)
+  and per-trigger `noticed_ts`, then writes `looked_at_s_ago` (4% box margin). looking_at = ≤ 0.6 s; unseen = not within the memory.
+  Built-ins keep Haiku's seen_by_user.
+- **Temporal triggers** (protocol v3.3, final): 3 labelled images (t-1.4s / t-0.7s / now, from a ring buffer of 512 px frames) in the same
+  single call. Haiku returns subject_bbox, target_bbox, ordinal, touching. The engine computes only relative signals: gap in body-heights
+  (median of 3), loom, and the ordinal history. It fires on touching, or when near (gap ≤ 1 bh at medium) and the gap shrank over
+  `trend.ticks` ticks, or "closer" × ticks (cross-checked: a growing gap resets it). Hysteresis + cooldown.
+  `docs/architecture.md` has a "Temporal + gaze memory layer" section.
+- **Events**: `sensor` camera|radar, `thumb` (240 px JPEG with gaze dot + boxes, only on app events, not in the log), `gaze_mode`,
+  `looked_at_s_ago`, `bbox`/`target_bbox`, `trend`, `radar`, `frame_ts`, `paused`.
+- **Pause + status**: `command pause {on}` (nothing reaches the sink; events flagged paused). `status` message every 2 s, on pause change
+  and in `hello.status`: paused, source {type, live, fps, gaze_hz, worn, battery, delay_ms} (`NeonSource.stats()`: battery from the Companion
+  status every ≤10 s, rolling capture→Mac median), radar (RadarSense.status() or null), about {config, model, commit, sink}.
+  The neon device card's detail shows fps / gaze Hz / worn / battery / delay, with `stats` alongside; a new `radar` card.
+- **Radar hook**: config `radar: {enabled, url, side_sign}` → `RadarSense(url, on_target=…)`, with the import guarded. Radar-source triggers fire
+  on confirmed approaching/too_close ≤ max_distance_m (2.0) and ≥ min_speed_mps (0.3) (+ min_urgency if set), unseen, with `why` like
+  "Person approaching from behind-left, 1.4 m at 0.6 m/s". Shares `Controller.emit` (quiet/pause/log) with camera events.
+- **Fix**: `VLMDetector._deliver` dropped full replies whenever a newer call's early fields arrived first, losing every custom-trigger result
+  with 3 calls in flight (C/D: 6–9 results per 20 s → 29–34).
+- Configs: `config.desk.yaml` (Neon realtime, Haiku 512 px ×3 in flight, datafeel-ble, :8765, radar ws://localhost:8090, triggers seeded from
+  `desk_test/triggers.desk.json` into `backend/triggers.desk.json`) and `config.desk.sim.yaml` (desk stills + scripted gaze, console, no server).
+  New config keys: `rules_seed`, `rules_seed_enable`. `FakeSource`: `start_at`, `loop`; video now follows the clock.
+- Desk test: `backend/desk_test/` (page `index.html`: pictures right third / lake clip right, distractor text left; 5 Commons images, see
+  CREDITS.md; synthetic canvas lake scene, no third-party video), `scene.py` (mock scene camera), `run_sim.py` (scored pre-runs),
+  `test_engine_v3.py` (offline checks incl. a fake RadarSense, plus `--live-radar` against `backend/tests/fake_radar_server.py` on :8091),
+  `triggers.desk.json`, and `scripts/desk_test.sh` (page on :8095 | prerun | check).
+- Pre-runs without hardware (real Haiku, 512 px): **A, B, C, D1, D2 all pass**. A: big_cat_look fires looking at the lion (onset→fire 1.6 s),
+  quiet for the dog and when reading. B: lion_unnoticed fires 1.8 s in, stays quiet while looking and for the 3 s memory after, fires 0.1 s
+  after it expires. C/D1: fire near the water (gap 1.04 → 0.67 bh), never far away or on the walk-away. D2 (gaze on the figure): quiet.
+  Frame→result 1.2–1.3 s (A/B), 1.5–1.65 s (C/D). The bbox/temporal cost is output tokens (~+100): within noise on a quiet API,
+  +0.3–0.6 s when busy. Table: `vlm/desk_test_results.md`; logs `logs/desk_sim/`. `test_engine_v3.py`: all pass (live radar too).
+
+### 18:58 Radar: merged radar-lab's protocol v2 / adapter into our radar sense
+- Kept our design (radar = a separate sense with app-editable `source: radar` triggers, alongside Neon + Haiku). Adopted
+  theirs: act only on the server's debounced `state`; `primary.where` (mount-aware, hysteresis; flipped by `side_sign`);
+  `ttc`; **fail safe: no frame for > 0.5 s → calm (reason "stale")**. Their adapter + PROTOCOL.md are copied to `radar/adapter/` (reference).
+- Tests: 10/10 unit tests; against `radar-lab/server.py`: `--scenario approach` → 1 fire (too_close 0.50 m);
+  `--scenario two_people` → 2 fires in 20 s (the approacher each loop; the walk-by never fired);
+  `--replay recordings/182745-desk_idle` → 2 "too close" fires at ~0.55 m (the seated person; mounting issue). Server→sense 3–4 ms median.

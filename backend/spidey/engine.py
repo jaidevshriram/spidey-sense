@@ -5,11 +5,15 @@ The phone app can also edit rules, send feedback and run commands over the WebSo
 """
 from __future__ import annotations
 
+import base64
 import json
+import subprocess
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
+import cv2
 import yaml
 
 from . import rules as R
@@ -39,7 +43,37 @@ def load_config(path: str | Path = ROOT / "configs" / "config.yaml") -> dict:
         src["paths"] = [rel(p) for p in src["paths"]]
     if det.get("env_file"):
         det["env_file"] = rel(det["env_file"])
+    cfg["_config_path"] = str(path)
     return cfg
+
+
+def git_commit() -> str | None:
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True,
+                              text=True, timeout=3).stdout.strip() or None
+    except Exception:
+        return None
+
+
+def make_thumb(frame, bbox=None, target_bbox=None, width: int = 240, quality: int = 70) -> str | None:
+    """Base64 JPEG (~240 px wide) of the fired frame with the gaze dot (red) and box(es) drawn."""
+    if frame is None or frame.image is None:
+        return None
+    img = frame.image
+    h, w = img.shape[:2]
+    s = width / w
+    th = max(1, int(h * s))
+    small = cv2.resize(img, (width, th), interpolation=cv2.INTER_AREA)
+    for box, color in ((target_bbox, (255, 160, 0)), (bbox, (0, 220, 255))):
+        if box:
+            x0, y0, x1, y1 = box
+            cv2.rectangle(small, (int(x0 * width), int(y0 * th)), (int(x1 * width), int(y1 * th)), color, 2)
+    g = frame.gaze_px()
+    if g is not None:
+        cv2.circle(small, (int(g[0] * s), int(g[1] * s)), 5, (0, 0, 255), -1)
+        cv2.circle(small, (int(g[0] * s), int(g[1] * s)), 6, (255, 255, 255), 1)
+    ok, jpg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return base64.b64encode(jpg.tobytes()).decode() if ok else None
 
 
 class Controller:
@@ -51,14 +85,37 @@ class Controller:
         self.lock = threading.RLock()        # guards rules + settings (socket thread vs engine loop)
         self.sink_lock = threading.Lock()    # one sink call at a time
         self.quiet = False
+        self.paused = False                  # pause: detection + Log keep running, nothing reaches the sink
         self.intensity = 1.0                 # master intensity, applied via sink.control
         self.haptics = getattr(sink, "control", None)   # HapticControl (real or mock dots)
         self.last_frame_ts: float | None = None
         self.last_play_ts: float | None = None
         self.server: EventServer | None = None
         self.detector = None                 # set by run(): receives custom triggers for its prompt
+        self.source = None                   # set by run(): .stats() for the status message
+        self.memory = R.TriggerMemory()      # gaze history + per-trigger noticed/trend memory
+        self.radar = None                    # RadarSense when cfg radar.enabled
+        self._frame_times: deque = deque()   # (ts, has_gaze) receive times, for fps / gaze Hz
+        self._ev_lock = threading.Lock()     # event ids + sink calls from the engine loop and the radar thread
+        self.n_events = 0
+        self.commit = git_commit()
+        self.radar_log = None                # the engine's JSONL log (set by run), shared with the radar thread
+        self._log_lock = threading.Lock()
         # One source of truth: the triggers file. Seeded once (config rules, else defaults); after that
         # config `rules:` are ignored and the file (edited live by the app) wins.
+        seed = cfg.get("rules_seed")          # optional: a triggers file to copy when rules_path is missing
+        if seed and not rules_path.exists():
+            seed_path = ROOT / seed
+            if seed_path.exists():
+                rules_path.parent.mkdir(parents=True, exist_ok=True)
+                seeded = json.loads(seed_path.read_text())
+                on = set(cfg.get("rules_seed_enable") or [])
+                for r in seeded.get("rules") or []:
+                    if r.get("id") in on:
+                        r["enabled"] = True
+                rules_path.write_text(json.dumps(seeded, indent=2) + "\n")
+                print(f"triggers: seeded {rules_path} from {seed_path}" + (f" (enabled: {sorted(on)})" if on else ""),
+                      flush=True)
         if rules_path.exists():
             try:
                 saved = json.loads(rules_path.read_text()).get("rules") or []
@@ -81,8 +138,8 @@ class Controller:
             return [r for r in self.rules if r.enabled]
 
     def play(self, pattern: str, dot: int | None, intensity: float | None = None, rgb=None) -> bool:
-        """Play unless quiet. Returns True if it reached the sink."""
-        if self.quiet:
+        """Play unless quiet or paused. Returns True if it reached the sink."""
+        if self.quiet or self.paused:
             return False
         with self.sink_lock:
             self.sink.play(pattern, dot, intensity, rgb)
@@ -113,6 +170,27 @@ class Controller:
         neon_status = "connected" if self.source_type == "neon" else "simulated"
         if self.source_type == "neon" and (self.last_frame_ts is None or now - self.last_frame_ts > 3):
             neon_status = "disconnected"
+        src = self.source_status()
+        neon_detail = f"source: {self.source_type}" + (
+            f" ({(self.cfg.get('source') or {}).get('mode', 'capture')})" if self.source_type == "neon" else "")
+        bits = [f"{src['fps']:.0f} fps" if src.get("fps") else None,
+                f"gaze {src['gaze_hz']:.0f} Hz" if src.get("gaze_hz") else None,
+                {True: "worn", False: "NOT worn"}.get(src.get("worn")),
+                f"battery {src['battery']}%" if src.get("battery") is not None else None,
+                f"delay {src['delay_ms']:.0f} ms" if src.get("delay_ms") is not None else None]
+        neon_detail += "".join(f" · {b}" for b in bits if b)
+        radar = self.radar_status()
+        if radar is None:
+            radar_card = {"id": "radar", "name": "Radar", "kind": "radar", "status": "disconnected",
+                          "detail": "not enabled in config (radar.enabled)", "last_seen": None}
+        else:
+            last = radar.get("last") or {}
+            radar_card = {"id": "radar", "name": "Radar", "kind": "radar",
+                          "status": "connected" if radar.get("connected") else "disconnected",
+                          "detail": f"{radar.get('url')} · {radar.get('mode') or '?'}"
+                                    + (f" · {radar['rate_hz']:.0f} Hz" if radar.get("rate_hz") else "")
+                                    + (f" · {last.get('state')} {last.get('distance_m')} m" if last else ""),
+                          "last_seen": last.get("ts")}
         n = len(self.server.clients) if self.server else 0
         return [
             {"id": "mac_hub", "name": "Mac hub", "kind": "websocket", "status": "connected",
@@ -122,9 +200,8 @@ class Controller:
              "sink": sink_type, "last_seen": link.get("last_seen") or self.last_play_ts,
              "link": link},
             {"id": "neon", "name": "Neon", "kind": "eye_tracker", "status": neon_status,
-             "detail": f"source: {self.source_type}" + (
-                 f" ({(self.cfg.get('source') or {}).get('mode', 'capture')})" if self.source_type == "neon" else ""),
-             "last_seen": self.last_frame_ts},
+             "detail": neon_detail, "last_seen": self.last_frame_ts, "stats": src},
+            radar_card,
             {"id": "oura", "name": "Oura", "kind": "heart_rate", "status": "coming_soon",
              "detail": "TODO: heart-rate source not built", "last_seen": None},
         ]
@@ -134,7 +211,138 @@ class Controller:
 
     def hello_extra(self) -> dict:
         return {"rules": self.rules_list()["rules"], "devices": self.devices(),
-                "settings": {k: v for k, v in self.settings_msg().items() if k != "type"}}
+                "settings": {k: v for k, v in self.settings_msg().items() if k != "type"},
+                "status": {k: v for k, v in self.status_msg().items() if k != "type"}}
+
+    # ---- status (on connect, every 2 s, on change) --------------------------------------
+    def note_frame(self, frame) -> None:
+        now = time.time()
+        self.last_frame_ts = now
+        self._frame_times.append((now, frame.gaze_xy is not None))
+        while self._frame_times and self._frame_times[0][0] < now - 2.0:
+            self._frame_times.popleft()
+
+    def source_status(self) -> dict:
+        now = time.time()
+        ft = [x for x in list(self._frame_times) if x[0] >= now - 2.0]
+        span = (ft[-1][0] - ft[0][0]) if len(ft) > 1 else 0.0
+        fps = round((len(ft) - 1) / span, 1) if span > 0.2 else 0.0
+        gaze_hz = round(fps * sum(1 for x in ft if x[1]) / len(ft), 1) if ft else 0.0
+        out = {"type": self.source_type, "live": self.last_frame_ts is not None and now - self.last_frame_ts < 3,
+               "fps": fps, "gaze_hz": gaze_hz, "worn": None, "battery": None, "delay_ms": None}
+        try:
+            out.update({k: v for k, v in (self.source.stats() if self.source else {}).items() if k in
+                        ("worn", "battery", "delay_ms", "mode")})
+        except Exception as e:
+            out["error"] = f"{type(e).__name__}: {e}"
+        if self.source_type != "neon":
+            out["worn"] = None if not ft else bool(ft[-1][1])
+        return out
+
+    def radar_status(self) -> dict | None:
+        if self.radar is None:
+            return None
+        try:
+            return self.radar.status()
+        except Exception as e:
+            return {"connected": False, "error": f"{type(e).__name__}: {e}"}
+
+    def status_msg(self) -> dict:
+        det = self.cfg.get("detector") or {}
+        sink_type = (self.cfg.get("sink") or {}).get("type", "console")
+        return {"type": "status", "paused": self.paused, "source": self.source_status(),
+                "radar": self.radar_status(),
+                "about": {"config": Path(self.cfg.get("_config_path", "config.yaml")).name,
+                          "model": det.get("model", "claude-haiku-5-5") if det.get("type") == "vlm"
+                          else det.get("type", "fake"),
+                          "commit": self.commit, "sink": sink_type}}
+
+    def broadcast_status(self) -> None:
+        if self.server:
+            self.server.broadcast(self.status_msg())
+
+    # ---- firing: one path for camera + radar events --------------------------------------
+    def emit(self, events, det=None, t0: float | None = None) -> list[dict]:
+        """Print, play (unless quiet/paused), publish to the app. Returns the event dicts (without thumbs)
+        for the JSONL log. Thread-safe (engine loop + radar thread)."""
+        out = []
+        if not events:
+            return out
+        quiet, paused = self.quiet, self.paused
+        with self._ev_lock:
+            for e in events:
+                flag = " [paused: not played]" if paused else " [quiet: not played]" if quiet else ""
+                print(f"[{time.time() - (t0 or time.time()):5.1f}s] -> {e.pattern} [{e.sensor}] ({e.reason}){flag}",
+                      flush=True)
+                self.play(e.pattern, e.dot, e.intensity, e.rgb)
+                if e.sensor == "camera" and det is not None and e.rule:
+                    r = next((r for r in self.rules if r.id == e.rule), None)
+                    if r is not None and r.temporal:
+                        self.memory.fired(r.id)      # hysteresis: disarm until the trend reverses
+            t_done = time.time()
+            for e in events:
+                self.n_events += 1
+                ev = {"id": self.n_events, "ts": e.ts, "pattern": e.pattern, "dot": e.dot,
+                      "rule": e.rule, "reason": e.reason, "trigger": e.rule,
+                      "trigger_name": e.trigger_name, "why": e.why, "sensor": e.sensor,
+                      **{k: v for k, v in e.extra.items() if k != "radar_ts"}}
+                if det is not None:
+                    frame_ts = det.raw.get("frame_ts", t_done)
+                    ev["detection"] = {"hazard": det.hazard, "where": det.where,
+                                       "seen_by_user": det.seen_by_user, "urgency": det.urgency}
+                    ev["latency_ms"] = round((t_done - frame_ts) * 1000, 1)
+                    ev["frame_ts"] = frame_ts
+                elif e.extra.get("radar") is not None and e.extra.get("radar_ts"):
+                    ev["latency_ms"] = round((t_done - e.extra["radar_ts"]) * 1000, 1)
+                if quiet:
+                    ev["quiet"] = True
+                if paused:
+                    ev["paused"] = True
+                out.append(dict(ev))
+                if self.server:
+                    if e.sensor == "camera" and det is not None:
+                        thumb = make_thumb(det.frame, e.extra.get("bbox"), e.extra.get("target_bbox"))
+                        if thumb:
+                            ev["thumb"] = thumb
+                    self.server.publish(ev)
+        return out
+
+    # ---- radar ------------------------------------------------------------------------------
+    def start_radar(self) -> None:
+        rc = self.cfg.get("radar") or {}
+        if not rc.get("enabled"):
+            return
+        try:
+            from .radar import RadarSense
+        except ImportError as e:
+            print(f"radar: enabled in config but spidey/radar.py is not importable ({e}); continuing without radar",
+                  flush=True)
+            return
+        url = rc.get("url", "ws://localhost:8090")
+        try:
+            self.radar = RadarSense(url, on_target=self.on_radar_target, side_sign=int(rc.get("side_sign", 1)))
+            print(f"radar: listening to {url}", flush=True)
+        except Exception as e:
+            print(f"radar: could not start ({type(e).__name__}: {e}); continuing without radar", flush=True)
+            self.radar = None
+
+    def on_radar_target(self, target: dict) -> None:
+        """Called on the radar thread for every non-calm update (and once on calm)."""
+        if target.get("state") not in ("approaching", "too_close"):
+            return
+        now = time.time()
+        with self.lock:
+            rules = [r for r in self.rules if r.enabled and r.source == "radar"]
+            events = R.apply_radar(rules, target, now)
+        for e in events:
+            if target.get("ts"):
+                e.extra["radar_ts"] = target["ts"]
+        out = self.emit(events)
+        if out and self.radar_log is not None:
+            with self._log_lock:
+                self.radar_log.write(json.dumps({"ts": {"radar": target.get("ts"), "sent": time.time()},
+                                                 "radar": target, "events": out}) + "\n")
+                self.radar_log.flush()
 
     # ---- handlers (run on the server's worker threads) ---------------------------------
     def _save_rules(self) -> None:
@@ -224,6 +432,10 @@ class Controller:
             ack["detail"] = f"intensity {self.intensity:.2f}"
             if self.server:
                 self.server.broadcast(self.settings_msg())
+        elif name == "pause":
+            self.paused = bool(args.get("on", not self.paused))
+            ack["detail"] = f"pause {'on' if self.paused else 'off'}"
+            self.broadcast_status()
         elif name == "quiet":
             self.quiet = bool(args.get("on", not self.quiet))
             ack["detail"] = f"quiet {'on' if self.quiet else 'off'}"
@@ -243,6 +455,7 @@ class Controller:
         server.on("feedback", self.on_feedback)
         server.on("command", self.on_command)
         server.add_periodic(5.0, self.device_status)
+        server.add_periodic(2.0, self.status_msg)
         if self.haptics:
             for kind in ("haptic.led", "haptic.vibe.sequence", "haptic.vibe.manual", "haptic.preset",
                          "haptic.thermal", "haptic.stop_all", "haptic.subscribe", "link.ping"):
@@ -300,14 +513,13 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
     ctl = Controller(cfg, sink, (cfg.get("source") or {}).get("type", "fake"),
                      rules_path=ROOT / cfg.get("rules_file", "triggers.json"),
                      feedback_path=ROOT / cfg.get("feedback_log", "logs/feedback.jsonl"))
-    ctl.detector = detector
+    ctl.detector, ctl.source = detector, source
     ctl.push_triggers()
     every = cfg.get("detect_every_s", 0)  # throttle slow detectors (e.g. a VLM)
     srv_cfg = cfg.get("server", {"enabled": True})
     server = EventServer(port=srv_cfg.get("port", 8765)) if srv_cfg.get("enabled", True) else None
     if server:
         ctl.attach(server)
-    n_events = 0
 
     log_path = ROOT / cfg.get("log", "logs/events.jsonl")
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -317,8 +529,11 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
     t_start, last_detect, prev_hazard = time.time(), 0.0, None
     try:
         with open(log_path, "a") as log:
+            ctl.radar_log = log
+            ctl.start_radar()
             for frame in source.frames():
-                ctl.last_frame_ts = time.time()
+                ctl.note_frame(frame)
+                ctl.memory.add_frame(frame)          # gaze history for looked_at_s_ago
                 if duration_s and time.time() - t_start > duration_s:
                     break
                 if time.time() - last_detect < every:
@@ -331,51 +546,44 @@ def run(cfg: dict, duration_s: float | None = None) -> None:
                 t_detected = time.time()
                 if not det.latency_ms:
                     det.latency_ms = (t_detected - t_detect) * 1000
+                if det.frame is None:
+                    det.frame = frame
                 # Async detectors report which frame they actually looked at.
-                frame_ts = det.raw.get("frame_ts", frame.ts)
+                frame_ts = det.raw.setdefault("frame_ts", frame.ts)
 
-                events = R.apply(ctl.active_rules(), det, t_detected)
+                rules = ctl.active_rules()
+                ctl.memory.annotate(det, rules, t_detected)     # real gaze vs boxes, temporal trends
+                events = R.apply(rules, det, t_detected)
                 state = (det.hazard, det.seen_by_user)
                 if state != prev_hazard:
                     print(f"[{t_detected - t_start:5.1f}s] hazard={det.hazard} where={det.where} "
                           f"seen={det.seen_by_user} urgency={det.urgency:.2f}", flush=True)
                     prev_hazard = state
-                quiet = ctl.quiet
-                for e in events:
-                    print(f"[{t_detected - t_start:5.1f}s] -> {e.pattern} ({e.reason})"
-                          f"{' [quiet: not played]' if quiet else ''}", flush=True)
-                    ctl.play(e.pattern, e.dot, e.intensity, e.rgb)
+                logged = ctl.emit(events, det, t_start)
                 t_done = time.time()
-                for e in events:
-                    n_events += 1
-                    if server:
-                        ev = {
-                            "id": n_events, "ts": e.ts, "pattern": e.pattern, "dot": e.dot,
-                            "rule": e.rule, "reason": e.reason, "trigger": e.rule,
-                            "trigger_name": e.trigger_name, "why": e.why,
-                            "detection": {"hazard": det.hazard, "where": det.where,
-                                          "seen_by_user": det.seen_by_user, "urgency": det.urgency},
-                            "latency_ms": round((t_done - frame_ts) * 1000, 1),
-                        }
-                        if quiet:
-                            ev["quiet"] = True
-                        server.publish(ev)
 
-                log.write(json.dumps({
-                    "ts": {"frame": frame_ts, "detect_start": t_detect,
-                           "detected": t_detected, "sent": t_done},
-                    "gaze": det.raw.get("gaze", frame.gaze_xy), "gaze_norm": frame.gaze_norm,
-                    "detection": {"hazard": det.hazard, "where": det.where,
-                                  "seen_by_user": det.seen_by_user, "urgency": det.urgency,
-                                  "latency_ms": round(det.latency_ms, 2), "raw": det.raw},
-                    "events": [{"pattern": e.pattern, "dot": e.dot, "reason": e.reason, "trigger": e.rule,
-                                "why": e.why,
-                                **({"quiet": True} if quiet else {})} for e in events],
-                    "e2e_ms": round((t_done - frame_ts) * 1000, 2),
-                }) + "\n")
+                with ctl._log_lock:
+                    log.write(json.dumps({
+                        "ts": {"frame": frame_ts, "detect_start": t_detect,
+                               "detected": t_detected, "sent": t_done},
+                        "gaze": det.raw.get("gaze", frame.gaze_xy), "gaze_norm": frame.gaze_norm,
+                        "detection": {"hazard": det.hazard, "where": det.where,
+                                      "seen_by_user": det.seen_by_user, "urgency": det.urgency,
+                                      "latency_ms": round(det.latency_ms, 2), "raw": det.raw,
+                                      **({"triggers": det.triggers} if det.triggers else {})},
+                        "events": logged,
+                        **({"paused": True} if ctl.paused else {}),
+                        "e2e_ms": round((t_done - frame_ts) * 1000, 2),
+                    }, default=str) + "\n")
     except KeyboardInterrupt:
         pass
     finally:
+        if ctl.radar is not None:
+            try:
+                ctl.radar.close()
+            except Exception:
+                pass
+        ctl.radar_log = None
         sink.close()
         detector.close()
         source.close()

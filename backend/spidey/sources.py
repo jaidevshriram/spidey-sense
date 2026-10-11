@@ -20,6 +20,10 @@ class GazeFrameSource:
     def frames(self) -> Iterator[Frame]:
         raise NotImplementedError
 
+    def stats(self) -> dict:
+        """Live source health for the app's status message (fps/gaze_hz are measured by the engine)."""
+        return {}
+
     def close(self) -> None:
         pass
 
@@ -36,12 +40,16 @@ class FakeSource(GazeFrameSource):
 
     def __init__(self, path: str | None = None, paths: list[str] | None = None, hold_s: float = 5,
                  fps: float = 15, size=(800, 600), gaze: str = "fixed", gaze_point=(0.5, 0.5),
-                 gaze_script: list | None = None, gaze_period: float | None = None):
+                 gaze_script: list | None = None, gaze_period: float | None = None,
+                 start_at: float | None = None, loop: bool = True):
         self.path, self.fps, self.size = path, fps, size
         self.gaze, self.gaze_point = gaze, tuple(gaze_point)
         self.gaze_script = sorted(gaze_script or [[0, 0.5, 0.5]])
         self.hold_s = hold_s
+        self.start_at = start_at      # unix time of scene t=0 (desk-test harness: known timeline), else first frame
+        self.loop = loop              # video: False = hold the last frame instead of looping
         self._cap = None
+        self._last_img, self._vidx = None, -1
         self._still = None
         self._playlist = []
         for p in paths or []:
@@ -88,11 +96,18 @@ class FakeSource(GazeFrameSource):
         if self._still is not None:
             return self._still.copy()
         if self._cap is not None:
-            ok, img = self._cap.read()
-            if not ok:  # loop the video
-                self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            # follow the clock (not one file frame per yielded frame), so the video plays in real time
+            vfps = self._cap.get(cv2.CAP_PROP_FPS) or self.fps
+            n = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            idx = int(t * vfps)
+            idx = idx % n if (n and self.loop) else min(idx, max(n - 1, 0))
+            if self._last_img is None or idx != self._vidx:
+                if idx != self._vidx + 1:
+                    self._cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ok, img = self._cap.read()
-            return img
+                if ok:
+                    self._last_img, self._vidx = img, idx
+            return self._last_img.copy()
         w, h = self.size
         img = np.full((h, w, 3), 45, np.uint8)
         img[::50, :] = 60
@@ -103,10 +118,12 @@ class FakeSource(GazeFrameSource):
         return img
 
     def frames(self) -> Iterator[Frame]:
-        t0 = time.time()
+        t0 = self.start_at or time.time()
+        if t0 > time.time():          # harness: scene t=0 is a wall-clock moment; no frames before it
+            time.sleep(t0 - time.time())
         while True:
             now = time.time()
-            t = now - t0
+            t = max(0.0, now - t0)
             yield Frame(ts=now, image=self._image(t), gaze_xy=self._gaze(t), gaze_norm=True)
             time.sleep(max(0.0, 1 / self.fps - (time.time() - now)))
 
@@ -137,6 +154,26 @@ class NeonSource(GazeFrameSource):
         self.mode = mode
         self._src = open_source(mode, host=host, with_video=True)
         self._ages: list[float] = []   # realtime: phone capture -> Mac receive, ms
+        self._delay_ms: float | None = None   # last median capture -> Mac age
+        self._recent_ages: list[float] = []
+        self._worn: bool | None = None
+        self._battery: tuple[float, int | None] = (0.0, None)   # (checked_at, percent)
+
+    def stats(self) -> dict:
+        """worn / battery / delay_ms for the app's status message. Battery comes from the Companion's
+        status updates (realtime mode only); read at most every 10 s."""
+        out = {"mode": self.mode, "worn": self._worn, "delay_ms": self._delay_ms}
+        dev = getattr(self._src, "device", None)
+        if dev is not None:
+            checked, pct = self._battery
+            if time.time() - checked > 10:
+                try:
+                    pct = int(dev.battery_level_percent)
+                except Exception:
+                    pct = None
+                self._battery = (time.time(), pct)
+            out["battery"] = pct
+        return out
 
     def frames(self) -> Iterator[Frame]:
         while True:
@@ -145,11 +182,16 @@ class NeonSource(GazeFrameSource):
                 continue
             now = time.time()
             gaze = None if (not s.worn or math.isnan(s.x)) else (s.x, s.y)
+            self._worn = bool(s.worn)
             if self.mode == "realtime":
                 # s.t = the phone's capture time already converted to this Mac's clock (Time Echo
                 # offset), so ts -> cue (e2e_ms) includes the Wi-Fi hop. Guard against a bad offset.
                 age = (now - s.t) * 1000
                 self._ages.append(age)
+                self._recent_ages = (self._recent_ages + [age])[-30:]
+                if len(self._recent_ages) >= 5:
+                    r = sorted(self._recent_ages)
+                    self._delay_ms = round(r[len(r) // 2])
                 if len(self._ages) >= 150:
                     a = sorted(self._ages)
                     print(f"[neon] {len(a)} frames · capture->Mac age median {a[len(a) // 2]:.0f} ms, "

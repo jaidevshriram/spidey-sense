@@ -32,7 +32,10 @@ class Detection:
     latency_ms: float = 0.0     # time the detector took
     raw: dict = field(default_factory=dict)
     reason: str = ""            # detector's one-line explanation (Haiku)
-    triggers: dict = field(default_factory=dict)  # custom trigger id -> {match, urgency, x, seen_by_user, reason}
+    triggers: dict = field(default_factory=dict)  # custom trigger id -> {match, urgency, x, seen_by_user, bbox, reason,
+                                                  #   temporal: subject_bbox, target_bbox, ordinal, touching}
+                                                  # + engine annotations (looked_at_s_ago, trend, trend_fire)
+    frame: Frame | None = field(default=None, repr=False)   # the frame the detector judged (thumbnails, gaze)
 
 
 @dataclass
@@ -46,3 +49,5 @@ class HapticEvent:
     why: str = ""               # Haiku's one-line reason
     intensity: float | None = None   # per-trigger strength (x master intensity)
     rgb: list | None = None          # per-trigger LED colour
+    sensor: str = "camera"           # camera | radar
+    extra: dict = field(default_factory=dict)   # event fields for the app: gaze_mode, looked_at_s_ago, bbox, trend, radar

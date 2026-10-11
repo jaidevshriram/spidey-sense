@@ -43,3 +43,11 @@ log: logs/events.jsonl
 server:                 # WebSocket feed for the phone app (ws://<mac-ip>:8765)
   enabled: true
   port: 8765
+
+# Heart rate (Oura) sense: spidey/heart.py. Needs the engine hook in docs/patches/heart_engine.md.
+# heart:
+#   enabled: true
+#   backend: replay          # replay | fake | open_oura (open_oura = the real ring via Bluetooth, see docs/oura.md)
+#   file: tests/data/hr_spike.csv   # replay: relative to backend/
+#   speed: 1                 # replay/fake speed-up
+#   loop: true

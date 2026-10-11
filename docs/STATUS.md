@@ -1,4 +1,4 @@
-# Status (updated 2026-10-10 18:40 PT)
+# Status (updated 2026-10-10 18:58 PT)
 
 One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 
@@ -17,12 +17,13 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 | Radar client of radar-lab's :8090 server | `d4a05c2` | 10/10 tests with a fake server; radar-lab sim confirmed an approach |
 | Slides (16, dark) | `1ad1ae6` | `docs/deck/index.html` |
 | iOS v3 app: gaze-mode / over-time / radar trigger editor, 5 test templates, Log thumbnails + trend + radar, source/sink chips + pause, Radar & Neon cards, About | see git log | builds; verified live on fakes; radar/trend/Neon numbers shown from sample data until the engine side lands |
+| Engine v3: gaze modes from real gaze history vs Haiku boxes, notice memory, temporal triggers (3 frames + relative trend memory), radar triggers, thumbnails, pause, status | this push | desk dry runs A–D all pass; `./scripts/desk_test.sh check` all pass |
+| Radar on radar-lab protocol v2 (debounced state, mount-aware `where`, 0.5 s fail-safe) | this push | approach → 1 fire; two_people walk-by ignored; ~4 ms server→sense |
 | Haptic Playground (web) | | `./scripts/playground.sh` |
 
 ## In progress
-- **Vision v3:** gaze modes (looking at / unseen with noticed memory / either) from real gaze history vs Haiku's object box;
-  temporal triggers (3 labelled frames per call + a relative trend memory: gap in body-heights, looming, closer/same/farther,
-  touching); radar triggers in the engine; event thumbnails; pause; `status` message; desk test page + dry runs.
+- **Oura heart-rate sense** (stub + replay/fake backends + app template/card; live ring needs re-pairing at home, see `docs/oura.md` when it lands).
+- **Live desk tests** with the real Neon + Dot (the glasses were unplugged while the phone charged).
 
 ## Known issues
 - Bluetooth must run from Terminal.app (the Claude app has no Bluetooth permission → exit 134). Only one process can hold the El Jefe link.
@@ -30,6 +31,9 @@ One-page current state. Details: `README.md`, history: `docs/BUILD_LOG.md`.
 - The current radar-lab server can flag a straight walk-by at 2.5 m as approaching (its new tracker should fix this). Radar AZ_SIGN is not calibrated yet.
 - The Companion phone battery drains fast while streaming over the hotspot.
 - The Neon stream shows H.264 artifacts over the hotspot.
+- Desk dry runs used scripted gaze, not real Neon gaze; Haiku boxes are coarse (bias toward "looked at" when the dot is on the object).
+- Keep `blindspot` off during desk tests (Haiku rates tiger photos as hazards).
+- A radar at the desk sees the person sitting at it as "too close" (idle recording fired twice at ~0.55 m); mount it facing away / behind.
 
 ## How to run each test (from the repo root, in Terminal.app)
 ```bash
@@ -41,10 +45,10 @@ python3 backend/run.py --config backend/configs/config.vlm.yaml --seconds 21   #
 python3 backend/run.py --config backend/configs/config.neon.yaml          # real Neon + Haiku (console)
 cd backend && ../.venv/bin/python -m unittest tests.test_radar_client -v  # radar client tests
 ```
-Desk tests (lion look / lion unnoticed / person near water ×2 / radar behind): steps come with Vision v3.
+Desk tests A–E: see README "Desk tests" (page `./scripts/desk_test.sh`, engine `./scripts/engine_ble.sh --config backend/configs/config.desk.yaml`).
 
 ## TBD numbers (fill in after the live desk tests)
 - Glasses → buzz end to end with the latency changes (last measured before them: 1.6 s median / 1.9 s p90)
-- Radar → buzz latency
+- Radar → buzz live (estimate ≈ 0.15 s: 29 ms radar→cue + ~117 ms BLE)
 - Temporal trigger: approach → buzz latency
 - Desk test hit/miss table (A–D + radar)

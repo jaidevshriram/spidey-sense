@@ -1,21 +1,27 @@
-"""Detection -> which pattern to feel. Rules are data, so they can live in config.yaml or rules.json.
+"""Detection -> which pattern to feel. Rules are data, so they can live in config.yaml or triggers.json.
 
 A rule's JSON form (the phone app's "sense", see docs/protocol.md):
-    {id, name, enabled, kind, describe, source, when, if, feel, intensity, rgb, dot, cooldown_s}
+    {id, name, enabled, kind, describe, source, when, if, feel, intensity, rgb, dot, cooldown_s,
+     gaze_mode, notice_memory_s, temporal, trend}
 
 kind "builtin": matched on the detector's hazard/urgency/seen. kind "custom": `describe` is plain English that
-the VLM judges in the same call; matched on detection.triggers[id].
+the VLM judges in the same call; matched on detection.triggers[id], after `TriggerMemory.annotate` added the
+real-gaze and trend signals. source "radar": matched on RadarSense targets (`check_radar`).
 """
 from __future__ import annotations
 
+import math
 import re
+from collections import deque
 from dataclasses import dataclass, field
 
-from .types import Detection, HapticEvent
+from .types import Detection, Frame, HapticEvent
 
-# Sources a rule can listen to. Only "neon" (vision detections) is wired into the engine today.
+# Sources a rule can listen to. "neon" (vision detections) and "radar" (RadarSense targets) are wired in.
 VISION_SOURCES = ("neon", "vision")
-SOURCES = ("neon", "heart_rate", "mac_metric", "manual")
+SOURCES = ("neon", "radar", "heart_rate", "mac_metric", "manual")
+GAZE_MODES = ("unseen", "looking_at", "any")
+LOOKING_AT_S = 0.6          # looking_at: gaze inside the box within this many seconds
 
 
 @dataclass
@@ -23,68 +29,152 @@ class Rule:
     name: str
     feel: str                         # pattern name in spidey_haptics.PATTERNS
     when: list[str] | str = "any"     # hazard kinds this rule covers, or "any"
-    if_: dict = field(default_factory=dict)  # {unseen: bool, min_urgency: float, max_urgency: float, ...}
+    if_: dict = field(default_factory=dict)  # {unseen, min_urgency, max_urgency, max_distance_m, min_speed_mps, ...}
     cooldown_s: float = 3.0
     dot: int | None = None            # 1-based dot, None = all
     id: str = ""                      # stable id for the phone app; defaults to a slug of name
     enabled: bool = True
-    source: str = "neon"              # neon | heart_rate | mac_metric | manual
+    source: str = "neon"              # neon | radar | heart_rate | mac_metric | manual
     kind: str = "builtin"             # builtin | custom
     describe: str = ""                # custom: what to watch for, in plain English
     intensity: float | None = None    # per-trigger vibration strength 0..1
     rgb: list | None = None           # per-trigger LED colour
+    gaze_mode: str | None = None      # unseen | looking_at | any; None = derived from if.unseen / if.seen
+    notice_memory_s: float = 3.0      # unseen: stay quiet this long after the gaze was last on the thing
+    temporal: bool = False            # custom: judged over the last 3 frames, fires on a consistent trend
+    trend: dict = field(default_factory=dict)   # temporal: {ticks: 3, sensitivity: low|medium|high}
     _last: float = field(default=-1e9, repr=False)
 
     def __post_init__(self):
         if not self.id:
             self.id = slug(self.name)
+        if self.gaze_mode not in GAZE_MODES:
+            self.gaze_mode = None
+
+    @property
+    def effective_gaze_mode(self) -> str:
+        """Back-compat: no gaze_mode -> if.unseen => unseen, if.seen => looking_at, else any."""
+        if self.gaze_mode:
+            return self.gaze_mode
+        if self.if_.get("unseen"):
+            return "unseen"
+        if self.if_.get("seen"):
+            return "looking_at"
+        return "any"
+
+    # ---- camera ---------------------------------------------------------------------
+    def _gaze_ok(self, seen_by_haiku: bool, t: dict | None) -> bool:
+        mode = self.effective_gaze_mode
+        if mode == "any":
+            return True
+        if t is not None and "looked_at_s_ago" in t:     # custom trigger with a box: real gaze history
+            ago = t["looked_at_s_ago"]
+            if mode == "looking_at":
+                return ago is not None and ago <= LOOKING_AT_S
+            return ago is None or ago > self.notice_memory_s
+        # built-ins (and custom triggers without a box): Haiku's red-dot judgement
+        return seen_by_haiku if mode == "looking_at" else not seen_by_haiku
 
     def matches(self, d: Detection) -> bool:
         if not self.enabled:
             return False
         if self.source not in VISION_SOURCES:
-            # TODO(stub): heart_rate / mac_metric / manual sources have no input stream yet.
-            # Their conditions (hr_band_bpm, value_gt, ...) are stored and round-tripped only.
+            # radar: see check_radar(). TODO(stub): heart_rate / mac_metric / manual have no input stream yet;
+            # their conditions (hr_band_bpm, value_gt, ...) are stored and round-tripped only.
             return False
         c = self.if_
         if self.kind == "custom":
             t = d.triggers.get(self.id) or {}
+            if self.temporal:
+                # the trend layer decides (TriggerMemory), not one Haiku verdict
+                return bool(t.get("trend_fire")) and self._gaze_ok(bool(t.get("seen_by_user")), t)
             if not t.get("match"):
                 return False
-            seen, urgency = bool(t.get("seen_by_user")), float(t.get("urgency") or 0.0)
+            if not self._gaze_ok(bool(t.get("seen_by_user")), t):
+                return False
+            urgency = float(t.get("urgency") or 0.0)
         else:
             if d.hazard is None:
                 return False
             if self.when != "any" and d.hazard not in self.when:
                 return False
-            seen, urgency = d.seen_by_user, d.urgency
-        if c.get("unseen") and seen:
-            return False
-        if c.get("seen") and not seen:
-            return False
-        if urgency < c.get("min_urgency", 0.0) or urgency > c.get("max_urgency", 1.0):
-            return False
-        return True
+            if not self._gaze_ok(d.seen_by_user, None):
+                return False
+            urgency = d.urgency
+        return c.get("min_urgency", 0.0) <= urgency <= c.get("max_urgency", 1.0)
 
     def check(self, d: Detection, now: float) -> HapticEvent | None:
         if not self.matches(d) or now - self._last < self.cooldown_s:
             return None
         self._last = now
+        extra = {"gaze_mode": self.effective_gaze_mode}
         if self.kind == "custom":
             t = d.triggers.get(self.id) or {}
             why = t.get("reason") or d.reason
             text = f"{self.name}: {why}"
+            if "looked_at_s_ago" in t:
+                extra["looked_at_s_ago"] = t["looked_at_s_ago"]
+            box = t.get("subject_bbox") if self.temporal else t.get("bbox")
+            if box:
+                extra["bbox"] = box
+            if self.temporal and t.get("target_bbox"):
+                extra["target_bbox"] = t["target_bbox"]
+            if self.temporal and t.get("trend"):
+                extra["trend"] = t["trend"]
         else:
             why = d.reason
             text = f"{self.name}: {d.hazard} {d.where or ''} {'seen' if d.seen_by_user else 'unseen'} u={d.urgency:.2f}"
         return HapticEvent(self.feel, self.dot, text.replace("  ", " "), now, self.id,
-                           trigger_name=self.name, why=why, intensity=self.intensity, rgb=self.rgb)
+                           trigger_name=self.name, why=why, intensity=self.intensity, rgb=self.rgb,
+                           sensor="camera", extra=extra)
+
+    # ---- radar ----------------------------------------------------------------------
+    def check_radar(self, target: dict, now: float) -> HapticEvent | None:
+        """RadarSense target {state, distance_m, speed_mps, angle_deg, side, ts, confirmed} -> event.
+        Fires on a confirmed approaching/too_close target within if.max_distance_m (default 2.0) moving at
+        >= if.min_speed_mps (default 0.3). Radar targets are unseen by definition."""
+        if not self.enabled or self.source != "radar":
+            return None
+        c = self.if_
+        try:
+            dist, speed = float(target.get("distance_m")), float(target.get("speed_mps") or 0.0)
+        except (TypeError, ValueError):
+            return None
+        if not (target.get("confirmed") and target.get("state") in ("approaching", "too_close")):
+            return None
+        if dist > float(c.get("max_distance_m", 2.0)) or speed < float(c.get("min_speed_mps", 0.3)):
+            return None
+        if "min_urgency" in c and target.get("urgency") is not None \
+                and float(target["urgency"]) < float(c["min_urgency"]):
+            return None
+        if now - self._last < self.cooldown_s:
+            return None
+        self._last = now
+        side = target.get("side") or "center"
+        where = {"left": "behind-left", "right": "behind-right"}.get(side, "behind")
+        verb = "approaching" if target.get("state") == "approaching" else "very close"
+        why = f"Person {verb} from {where}, {dist:.1f} m at {speed:.1f} m/s"
+        radar = {k: target.get(k) for k in ("distance_m", "speed_mps", "angle_deg", "side")}
+        return HapticEvent(self.feel, self.dot, f"{self.name}: {why}", now, self.id, trigger_name=self.name,
+                           why=why, intensity=self.intensity, rgb=self.rgb, sensor="radar",
+                           extra={"gaze_mode": "unseen", "radar": radar})
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "enabled": self.enabled, "kind": self.kind,
-                "describe": self.describe, "source": self.source, "when": self.when, "if": dict(self.if_),
-                "feel": self.feel, "intensity": self.intensity, "rgb": self.rgb, "dot": self.dot,
-                "cooldown_s": self.cooldown_s}
+        d = {"id": self.id, "name": self.name, "enabled": self.enabled, "kind": self.kind,
+             "describe": self.describe, "source": self.source, "when": self.when, "if": dict(self.if_),
+             "feel": self.feel, "intensity": self.intensity, "rgb": self.rgb, "dot": self.dot,
+             "cooldown_s": self.cooldown_s, "gaze_mode": self.effective_gaze_mode,
+             "notice_memory_s": self.notice_memory_s, "temporal": self.temporal}
+        if self.temporal:
+            d["trend"] = trend_params(self.trend)
+        return d
+
+
+def trend_params(trend: dict | None) -> dict:
+    trend = trend or {}
+    sens = trend.get("sensitivity", "medium")
+    return {"ticks": max(1, int(trend.get("ticks", 3) or 3)),
+            "sensitivity": sens if sens in SENSITIVITY else "medium"}
 
 
 def slug(name: str) -> str:
@@ -92,7 +182,8 @@ def slug(name: str) -> str:
 
 
 def rule_from_dict(c: dict) -> Rule:
-    """Config/rules.json/phone-app dict -> Rule. Accepts "if" or "if_" for the condition."""
+    """Config/triggers.json/phone-app dict -> Rule. Accepts "if" or "if_" for the condition."""
+    nm = c.get("notice_memory_s")
     return Rule(name=c.get("name") or c.get("id") or "rule", feel=c.get("feel", "urgent"),
                 when=c.get("when", "any") or "any", if_=dict(c.get("if", c.get("if_")) or {}),
                 cooldown_s=float(c.get("cooldown_s", 3.0)), dot=c.get("dot"),
@@ -101,7 +192,10 @@ def rule_from_dict(c: dict) -> Rule:
                 kind=c.get("kind") or ("custom" if c.get("describe") else "builtin"),
                 describe=c.get("describe") or "",
                 intensity=None if c.get("intensity") is None else max(0.0, min(1.0, float(c["intensity"]))),
-                rgb=list(c["rgb"])[:3] if c.get("rgb") else None)
+                rgb=list(c["rgb"])[:3] if c.get("rgb") else None,
+                gaze_mode=c.get("gaze_mode"),
+                notice_memory_s=3.0 if nm is None else max(0.0, float(nm)),
+                temporal=bool(c.get("temporal", False)), trend=dict(c.get("trend") or {}))
 
 
 # Something dangerous you haven't looked at -> urgent buzz; something milder -> ambient hum.
@@ -109,9 +203,10 @@ DEFAULT_RULES = [Rule("blindspot", feel="urgent", if_={"unseen": True, "min_urge
                  Rule("heads_up", feel="ambient", if_={"unseen": True, "max_urgency": 0.59}, cooldown_s=6)]
 
 
-def custom_triggers(rules: list[Rule]) -> list[tuple[str, str]]:
-    """(id, description) of enabled custom triggers, for the VLM prompt."""
-    return [(r.id, r.describe) for r in rules if r.enabled and r.kind == "custom" and r.describe]
+def custom_triggers(rules: list[Rule]) -> list[tuple[str, str, bool]]:
+    """(id, description, temporal) of enabled custom camera triggers, for the VLM prompt."""
+    return [(r.id, r.describe, r.temporal) for r in rules
+            if r.enabled and r.kind == "custom" and r.describe and r.source in VISION_SOURCES]
 
 
 def load_rules(cfgs: list[dict] | None) -> list[Rule]:
@@ -130,3 +225,194 @@ def load_rules(cfgs: list[dict] | None) -> list[Rule]:
 
 def apply(rules: list[Rule], d: Detection, now: float) -> list[HapticEvent]:
     return [e for r in rules if r.enabled and (e := r.check(d, now))]
+
+
+def apply_radar(rules: list[Rule], target: dict, now: float) -> list[HapticEvent]:
+    return [e for r in rules if r.enabled and r.source == "radar" and (e := r.check_radar(target, now))]
+
+
+# =====================================================================================
+# Temporal + gaze memory layer
+# =====================================================================================
+# Only relative, measurable quantities are remembered: gaze samples (0..1 of the scene frame), Haiku's boxes
+# (0..1 of the frame it saw), the subject->target gap in subject body-heights, the subject's box area ratio
+# ("loom") and Haiku's ordinal closer/same/farther. No metric distances from the camera.
+
+GAZE_HISTORY_S = 5.0
+BOX_MARGIN = 0.04            # gaze within 4% of the frame around a box counts as "on it"
+MATCH_GAP_S = 2.0            # a trigger unmatched this long = the thing is gone; its memory resets
+TREND_GAP_S = 4.0            # temporal: no tick for this long = restart the trend (same subject: arm state kept)
+TRACK_FORGET_S = 10.0        # temporal: subject unseen this long = a new track (re-armed)
+# min gap shrink per tick (body-heights) that counts as "moving toward", and the proximity gate
+SENSITIVITY = {"low": 0.15, "medium": 0.07, "high": 0.03}
+NEAR_GAP = {"low": 0.5, "medium": 1.0, "high": 2.0}
+REARM_FACTOR = 1.3           # hysteresis: re-arm once the gap grew back 30% (+0.2 body-heights) past the firing gap
+
+
+def valid_box(b) -> list[float] | None:
+    """[x0, y0, x1, y1] in 0..1 (clamped), or None."""
+    try:
+        x0, y0, x1, y1 = (float(v) for v in b)
+    except (TypeError, ValueError):
+        return None
+    x0, x1 = sorted((max(0.0, min(1.0, x0)), max(0.0, min(1.0, x1))))
+    y0, y1 = sorted((max(0.0, min(1.0, y0)), max(0.0, min(1.0, y1))))
+    if x1 - x0 < 1e-3 or y1 - y0 < 1e-3:
+        return None
+    return [round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)]
+
+
+def iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def box_gap(subject, target, w: float, h: float) -> float:
+    """Box-to-box distance in pixels / subject box height in pixels (0 = boxes touch or overlap)."""
+    dx = max(target[0] - subject[2], subject[0] - target[2], 0.0) * w
+    dy = max(target[1] - subject[3], subject[1] - target[3], 0.0) * h
+    sh = max((subject[3] - subject[1]) * h, 1.0)
+    return math.hypot(dx, dy) / sh
+
+
+def in_box(x: float, y: float, b, m: float = BOX_MARGIN) -> bool:
+    return b[0] - m <= x <= b[2] + m and b[1] - m <= y <= b[3] + m
+
+
+@dataclass
+class TriggerState:
+    """Rolling memory of one custom trigger: when it matched, when the gaze was last on it, and (temporal)
+    the per-tick track of the subject relative to the target."""
+    match_since: float | None = None     # frame ts of the first match in the current streak
+    last_match: float | None = None
+    noticed_ts: float | None = None      # last gaze sample inside the box while matched
+    ticks: deque = field(default_factory=lambda: deque(maxlen=12))   # temporal: per-tick dicts
+    shrink_streak: int = 0
+    closer_streak: int = 0
+    armed: bool = True
+    fired_gap: float | None = None
+
+    def reset_track(self) -> None:
+        self.ticks.clear()
+        self.shrink_streak = self.closer_streak = 0
+        self.armed, self.fired_gap = True, None
+
+
+class TriggerMemory:
+    """Feeds on every frame's gaze and every full Detection; writes into det.triggers[id]:
+    looked_at_s_ago (camera custom triggers with a box), and for temporal triggers trend + trend_fire."""
+
+    def __init__(self):
+        self.gaze: deque = deque()              # (ts, x, y) normalized 0..1
+        self.states: dict[str, TriggerState] = {}
+
+    def add_frame(self, frame: Frame) -> None:
+        g = frame.gaze_px()
+        if g is not None:
+            h, w = frame.image.shape[:2]
+            self.gaze.append((frame.ts, g[0] / w, g[1] / h))
+        while self.gaze and self.gaze[0][0] < frame.ts - GAZE_HISTORY_S:
+            self.gaze.popleft()
+
+    def fired(self, rule_id: str) -> None:
+        """A temporal trigger actually fired: disarm it until the trend reverses (hysteresis)."""
+        st = self.states.get(rule_id)
+        if st is not None:
+            st.armed = False
+            st.fired_gap = st.ticks[-1].get("gap_s") if st.ticks else None
+            st.shrink_streak = st.closer_streak = 0
+
+    def annotate(self, det: Detection, rules: list[Rule], now: float) -> None:
+        if det.raw.get("early"):
+            return                      # early detections carry no custom triggers
+        frame_ts = det.raw.get("frame_ts", now)
+        w, h = (det.frame.image.shape[1], det.frame.image.shape[0]) if det.frame is not None else (1600, 1200)
+        for r in rules:
+            if not (r.enabled and r.kind == "custom" and r.source in VISION_SOURCES):
+                continue
+            t = det.triggers.setdefault(r.id, {"match": False})
+            st = self.states.setdefault(r.id, TriggerState())
+            if r.temporal:
+                sb, tb = valid_box(t.get("subject_bbox")), valid_box(t.get("target_bbox"))
+                t["subject_bbox"], t["target_bbox"] = sb, tb
+                boxes = [b for b in (sb, tb) if b]
+                present = sb is not None
+            else:
+                b = valid_box(t.get("bbox"))
+                t["bbox"] = b
+                boxes = [b] if b else []
+                present = bool(t.get("match"))
+            # -- match streak + gaze "noticed" memory --------------------------------------
+            if present:
+                if st.last_match is None or frame_ts - st.last_match > MATCH_GAP_S:
+                    st.match_since, st.noticed_ts = frame_ts, None
+                st.last_match = frame_ts
+            elif st.last_match is not None and now - st.last_match > max(MATCH_GAP_S, r.notice_memory_s):
+                st.match_since = st.last_match = st.noticed_ts = None
+            if present and boxes:
+                since = (st.match_since or frame_ts) - 0.3
+                hits = [ts for ts, x, y in self.gaze if ts >= since and any(in_box(x, y, b) for b in boxes)]
+                if hits:
+                    st.noticed_ts = max(st.noticed_ts or 0.0, max(hits))
+                t["looked_at_s_ago"] = None if st.noticed_ts is None else round(max(0.0, now - st.noticed_ts), 2)
+            # -- temporal trend -----------------------------------------------------------------
+            if r.temporal:
+                self._trend(r, t, st, frame_ts, w, h)
+
+    def _trend(self, r: Rule, t: dict, st: TriggerState, frame_ts: float, w: int, h: int) -> None:
+        """Per tick: gap (body-heights, median of 3), loom, Haiku's ordinal. Fires (if armed) when
+        touching, or near the target (gap <= NEAR_GAP) and either
+          - the gap shrank over the last `ticks` ticks (no step growing by > eps, net shrink >= eps * (ticks-1)), or
+          - Haiku said "closer" `ticks` times in a row, cross-checked against the gap (a growing gap resets it)."""
+        p = trend_params(r.trend)
+        n, eps, near = p["ticks"], SENSITIVITY[p["sensitivity"]], NEAR_GAP[p["sensitivity"]]
+        sb, tb = t["subject_bbox"], t["target_bbox"]
+        t["trend_fire"] = False
+        if sb is None:
+            return
+        prev = st.ticks[-1] if st.ticks else None
+        if prev is not None:
+            same = iou(prev["sb"], sb) >= 0.2
+            # small boxes jitter: also accept a centre within one subject height of the previous one
+            pc = ((prev["sb"][0] + prev["sb"][2]) / 2 * w, (prev["sb"][1] + prev["sb"][3]) / 2 * h)
+            nc = ((sb[0] + sb[2]) / 2 * w, (sb[1] + sb[3]) / 2 * h)
+            same = same or math.dist(pc, nc) <= (sb[3] - sb[1]) * h
+            if not same or frame_ts - prev["ts"] > TRACK_FORGET_S:
+                st.reset_track()            # a different subject (big jump), or gone for long: re-arm
+                prev = None
+            elif frame_ts - prev["ts"] > TREND_GAP_S:
+                st.ticks.clear()            # same subject after a gap: restart the trend, keep the arm state
+                st.closer_streak = 0
+                prev = None
+        gap = box_gap(sb, tb, w, h) if tb else None
+        raw_gaps = [k["gap"] for k in list(st.ticks)[-2:] if k["gap"] is not None] + ([gap] if gap is not None else [])
+        gap_s = sorted(raw_gaps)[len(raw_gaps) // 2] if raw_gaps else None      # median of the last 3
+        area = (sb[2] - sb[0]) * (sb[3] - sb[1])
+        loom = round(area / prev["area"], 2) if prev and prev["area"] > 0 else 1.0
+        ordinal = t.get("ordinal") if t.get("ordinal") in ("closer", "same", "farther") else None
+        touching = bool(t.get("touching"))
+        prev_gap_s = next((k["gap_s"] for k in reversed(st.ticks) if k["gap_s"] is not None), None)
+        growing = gap_s is not None and prev_gap_s is not None and gap_s - prev_gap_s > eps
+        if ordinal == "closer" and not growing:
+            st.closer_streak += 1
+        elif ordinal == "farther" or growing:
+            st.closer_streak = 0
+        st.ticks.append({"ts": frame_ts, "sb": sb, "gap": gap, "gap_s": gap_s, "area": area,
+                         "ordinal": ordinal, "touching": touching})
+        gaps = [k["gap_s"] for k in st.ticks if k["gap_s"] is not None][-n:]
+        shrinking = (len(gaps) >= n and all(b - a <= eps for a, b in zip(gaps, gaps[1:]))
+                     and gaps[0] - gaps[-1] >= eps * max(1, n - 1))
+        st.shrink_streak = st.shrink_streak + 1 if shrinking else 0
+        if not st.armed and gap_s is not None and st.fired_gap is not None \
+                and gap_s >= st.fired_gap * REARM_FACTOR + 0.2 and not touching:
+            st.armed = True
+        is_near = gap_s is None or gap_s <= near
+        fire = touching or (is_near and (shrinking or st.closer_streak >= n))
+        t["trend_fire"] = bool(st.armed and fire)
+        last = list(st.ticks)[-3:]
+        t["trend"] = {"gap": [None if k["gap_s"] is None else round(k["gap_s"], 2) for k in last],
+                      "ordinal": [k["ordinal"] for k in last], "touching": touching, "loom": loom,
+                      "shrinking": shrinking, "closer_streak": st.closer_streak, "armed": st.armed}

@@ -68,10 +68,22 @@ class VLMDetector(Detector):
         "urgency 0. x: horizontal centre of the hazard (0 left edge, 1 right edge). seen_by_user: the red "
         "dot is on or near it. reason: under 15 words. "
         'triggers: for each custom trigger id listed by the user, {"match": bool, "urgency": 0-1, '
-        '"x": 0-1, "seen_by_user": bool, "reason": string}; for a trigger that does not match return only '
-        '{"match": false}. match only if the image clearly shows what the trigger describes. '
-        "If there are no custom triggers, triggers is {}."
+        '"x": 0-1, "seen_by_user": bool, "bbox": [x0, y0, x1, y1], "reason": string}; bbox = tight box around '
+        "the matching thing, as fractions 0-1 of the image width/height (origin top-left). For a trigger that "
+        'does not match return only {"match": false}. match only if the image clearly shows what the trigger '
+        "describes. If there are no custom triggers, triggers is {}. "
+        "Several images labelled t-1.4s, t-0.7s, now are consecutive frames from the same camera, oldest "
+        "first: judge the newest ('now'); every x and box refers to it; use the earlier ones only for change "
+        "over time. For a trigger marked (temporal), whenever its subject and the target it moves relative to "
+        'are visible (even if match is false), use {"match": bool, "urgency": 0-1, "subject_bbox": [..], '
+        '"target_bbox": [..], "ordinal": "closer"|"same"|"farther", "touching": bool, "reason": string}: '
+        "ordinal = is the subject closer to the target now than in the earlier frames; touching = subject "
+        "touches or enters the target now."
     )
+
+    TEMPORAL_OFFSETS = (1.4, 0.7)      # older frames sent with temporal triggers (seconds before "now")
+    RING_EVERY_S = 0.1                 # keep a small copy of a frame at most this often
+    RING_S = 2.5
 
     def __init__(self, model: str = "claude-haiku-5-5", max_side: int = 384, jpeg_quality: int = 70,
                  max_tokens: int = 200, min_interval_s: float = 0.4, concurrency: int = 2,
@@ -91,19 +103,25 @@ class VLMDetector(Detector):
         self.model, self.max_side, self.jpeg_quality = model, max_side, jpeg_quality
         self.max_tokens, self.min_interval_s = max_tokens, min_interval_s
         self.concurrency, self.stream, self.cache = max(1, concurrency), stream, cache
-        self.triggers: list[tuple[str, str]] = []   # (id, plain-English description), set by the engine
+        self.triggers: list[tuple[str, str, bool]] = []   # (id, description, temporal), set by the engine
+        self._ring: list[tuple[float, Frame]] = []    # (ts, downscaled frame) for temporal triggers
         self._pool = ThreadPoolExecutor(max_workers=self.concurrency)
         self._lock = threading.Lock()
         self._pending: Frame | None = None
         self._results: list[Detection] = []
         self._in_flight = 0
         self._last_dispatch = 0.0
-        self._last_delivered = (0.0, 0)     # (frame_ts, stage) stage 0 early, 1 full
+        self._last_delivered = [0.0, 0.0]   # newest frame_ts delivered per stage: [early, full]
 
     # ---- request building ---------------------------------------------------------------
-    def set_triggers(self, triggers: list[tuple[str, str]]) -> None:
-        """Enabled custom triggers to judge in the same call (engine calls this on every change)."""
-        self.triggers = list(triggers)
+    def set_triggers(self, triggers: list[tuple]) -> None:
+        """Enabled custom triggers to judge in the same call (engine calls this on every change).
+        Items: (id, description) or (id, description, temporal)."""
+        self.triggers = [(t[0], t[1], bool(t[2]) if len(t) > 2 else False) for t in triggers]
+
+    @property
+    def temporal(self) -> bool:
+        return any(t[2] for t in self.triggers)
 
     def system_blocks(self) -> list[dict]:
         blocks = [{"type": "text", "text": self.SYSTEM}]
@@ -114,7 +132,37 @@ class VLMDetector(Detector):
     def user_text(self, trig) -> str:
         if not trig:
             return "Custom triggers: none."
-        return "Custom triggers:\n" + "\n".join(f'- id "{tid}": {desc.strip()}' for tid, desc in trig)
+        return "Custom triggers:\n" + "\n".join(f'- id "{t[0]}"{" (temporal)" if len(t) > 2 and t[2] else ""}: '
+                                                f'{t[1].strip()}' for t in trig)
+
+    def _small(self, frame: Frame) -> Frame:
+        """A max_side copy of the frame (gaze rescaled) for the temporal ring buffer."""
+        img = frame.image
+        h, w = img.shape[:2]
+        scale = self.max_side / max(h, w)
+        if scale >= 1:
+            return frame
+        small = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        g = frame.gaze_xy
+        if g is not None and not frame.gaze_norm:
+            g = (g[0] * scale, g[1] * scale)
+        return Frame(frame.ts, small, g, frame.gaze_norm)
+
+    def _remember(self, frame: Frame) -> None:
+        if not self._ring or frame.ts - self._ring[-1][0] >= self.RING_EVERY_S:
+            self._ring.append((frame.ts, self._small(frame)))
+        while self._ring and self._ring[0][0] < frame.ts - self.RING_S:
+            self._ring.pop(0)
+
+    def history_for(self, frame: Frame) -> list[tuple[str, Frame]]:
+        """[(label, frame)] oldest first, ending with ("now", frame); older frames only with temporal triggers."""
+        out = []
+        if self.temporal:
+            for off in self.TEMPORAL_OFFSETS:
+                cands = [(abs(ts - (frame.ts - off)), f) for ts, f in self._ring if ts < frame.ts - off / 2]
+                if cands:
+                    out.append((f"t-{off:.1f}s", min(cands, key=lambda c: c[0])[1]))
+        return out + [("now", frame)]
 
     def prepare(self, frame: Frame) -> str:
         """Downscale to max_side px, draw the gaze dot, return base64 JPEG."""
@@ -134,18 +182,24 @@ class VLMDetector(Detector):
     _EARLY = re.compile(r'"hazard"\s*:\s*(null|"(?:[^"\\]|\\.)*")\s*,\s*"urgency"\s*:\s*([0-9.]+)\s*,'
                         r'\s*"x"\s*:\s*([0-9.]+|null)\s*,\s*"seen_by_user"\s*:\s*(true|false)')
 
-    def call(self, frame: Frame) -> Detection:
-        """One model call for one frame. With stream=True, delivers an early Detection when the
-        built-in fields have arrived, then returns the full one."""
+    def call(self, frame: Frame, history: list[tuple[str, Frame]] | None = None) -> Detection:
+        """One model call for one frame (plus, with temporal triggers, 2 older labelled frames in the same
+        request). With stream=True, delivers an early Detection when the built-in fields have arrived,
+        then returns the full one."""
         t0 = time.perf_counter()
         trig = list(self.triggers)
-        kwargs = dict(model=self.model, max_tokens=self.max_tokens + 60 * len(trig),
+        history = history or [("now", frame)]
+        content = []
+        for label, f in history:
+            if len(history) > 1:
+                content.append({"type": "text", "text": label})
+            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                        "data": self.prepare(f)}})
+        content.append({"type": "text", "text": self.user_text(trig)})
+        n_temporal = sum(1 for t in trig if t[2])
+        kwargs = dict(model=self.model, max_tokens=self.max_tokens + 90 * len(trig) + 40 * n_temporal,
                       thinking={"type": "disabled"}, output_config={"effort": "low"},
-                      system=self.system_blocks(),
-                      messages=[{"role": "user", "content": [
-                          {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                       "data": self.prepare(frame)}},
-                          {"type": "text", "text": self.user_text(trig)}]}])
+                      system=self.system_blocks(), messages=[{"role": "user", "content": content}])
         early_ms = None
         if self.stream:
             text = ""
@@ -161,7 +215,8 @@ class VLMDetector(Detector):
                             self._deliver(Detection(
                                 hz, where_from_x(m.group(3)) if hz else None, m.group(4) == "true",
                                 u if hz else 0.0, early_ms,
-                                {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "early": True}), frame.ts, 0)
+                                {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "early": True}, frame=frame),
+                                frame.ts, 0)
                 resp = st.get_final_message()
         else:
             resp = self.client.messages.create(**kwargs)
@@ -169,11 +224,11 @@ class VLMDetector(Detector):
         latency = (time.perf_counter() - t0) * 1000
         u = resp.usage
         raw = {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "text": text, "stop_reason": resp.stop_reason,
-               "n_triggers": len(trig), "early_ms": early_ms, "input_tokens": u.input_tokens,
+               "n_triggers": len(trig), "n_images": len(history), "early_ms": early_ms, "input_tokens": u.input_tokens,
                "output_tokens": u.output_tokens, "cache_read": getattr(u, "cache_read_input_tokens", 0)}
         data = parse_json(text)
         if data is None:
-            return Detection(None, None, False, 0.0, latency, raw | {"parse_error": True})
+            return Detection(None, None, False, 0.0, latency, raw | {"parse_error": True}, frame=frame)
         hazard = data.get("hazard") or None
         try:
             urgency = max(0.0, min(1.0, float(data.get("urgency") or 0)))
@@ -187,29 +242,37 @@ class VLMDetector(Detector):
                     tu = max(0.0, min(1.0, float(t.get("urgency") or 0)))
                 except (TypeError, ValueError):
                     tu = 0.0
-                triggers[str(tid)] = {"match": bool(t.get("match")), "urgency": tu,
-                                      "where": where_from_x(t.get("x")), "seen_by_user": bool(t.get("seen_by_user")),
-                                      "reason": str(t.get("reason") or "")[:200]}
+                out = {"match": bool(t.get("match")), "urgency": tu,
+                       "where": where_from_x(t.get("x")), "seen_by_user": bool(t.get("seen_by_user")),
+                       "reason": str(t.get("reason") or "")[:200]}
+                for k in ("bbox", "subject_bbox", "target_bbox", "ordinal", "touching"):
+                    if k in t:
+                        out[k] = t[k]
+                triggers[str(tid)] = out
         return Detection(hazard, where, bool(data.get("seen_by_user")), urgency if hazard else 0.0, latency, raw,
-                         reason=str(data.get("reason") or "")[:200], triggers=triggers)
+                         reason=str(data.get("reason") or "")[:200], triggers=triggers, frame=frame)
 
     # ---- scheduling ---------------------------------------------------------------------
     def _deliver(self, det: Detection, frame_ts: float, stage: int) -> None:
         with self._lock:
-            if (frame_ts, stage) <= self._last_delivered:
-                return      # an older frame finished after a newer one: stale, drop it
-            self._last_delivered = (frame_ts, stage)
+            # stale = an older frame finished after a newer one. Full results are only compared with full ones
+            # (a newer call's early fields often arrive before an older call's full reply, which still carries
+            # the custom triggers); an early result is stale if any newer result of either stage was delivered.
+            newest = self._last_delivered[1] if stage == 1 else max(self._last_delivered)
+            if frame_ts <= newest:
+                return
+            self._last_delivered[stage] = frame_ts
             self._results.append(det)
 
-    def _run_one(self, frame: Frame) -> None:
+    def _run_one(self, frame: Frame, history: list | None = None) -> None:
         import anthropic
 
         t0 = time.time()
         try:
-            det = self.call(frame)
+            det = self.call(frame, history)
         except anthropic.APIError as e:
             det = Detection(None, None, False, 0.0, (time.time() - t0) * 1000,
-                            {"frame_ts": frame.ts, "error": f"{type(e).__name__}: {e}"})
+                            {"frame_ts": frame.ts, "error": f"{type(e).__name__}: {e}"}, frame=frame)
         finally:
             with self._lock:
                 self._in_flight -= 1
@@ -217,6 +280,8 @@ class VLMDetector(Detector):
 
     def analyze(self, frame: Frame) -> Detection | None:
         now = time.time()
+        if self.temporal:
+            self._remember(frame)
         with self._lock:
             self._pending = frame
             launch = (self._in_flight < self.concurrency and now - self._last_dispatch >= self.min_interval_s)
@@ -226,7 +291,7 @@ class VLMDetector(Detector):
                 f, self._pending = self._pending, None
             det = self._results.pop(0) if self._results else None
         if launch:
-            self._pool.submit(self._run_one, f)
+            self._pool.submit(self._run_one, f, self.history_for(f))
         return det
 
     def close(self) -> None:

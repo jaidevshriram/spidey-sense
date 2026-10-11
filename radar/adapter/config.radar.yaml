@@ -1,0 +1,45 @@
+# Radar-only Spidey run: radar-lab's debounced alerts -> rules -> haptics. No camera, no API key.
+# Copy to spidey-sense backend/configs/config.radar.yaml (see INTEGRATION.md), then:
+#   (radar-lab)  .venv/bin/python server.py                      # live board, or --replay / --scenario
+#   (spidey)     python3 backend/run.py --config backend/configs/config.radar.yaml --seconds 30
+#   (spidey)     python3 backend/run.py --config backend/configs/config.radar.yaml --sink datafeel-ble   # Terminal.app
+
+source:
+  type: fake            # the engine loop needs a frame clock; the image is ignored by the radar detector
+  fps: 20               # = radar frame rate, so every radar frame is looked at
+  gaze: fixed
+  gaze_point: [0.5, 0.5]
+
+detector:
+  type: radar
+  url: ws://localhost:8090/ws
+  mount: back           # back = worn facing behind you -> where = behind / behind-left / behind-right
+                        # front = facing forward; omit to use the radar server's own "where"
+  seen_by_user: false   # radar can't see your gaze; behind you is never "seen"
+  stale_s: 0.5          # no radar data for 0.5 s -> no hazard (fail safe)
+  min_state: approaching
+  connect_timeout_s: 3  # wait up to 3 s for the first radar frame at startup
+
+detect_every_s: 0
+
+rules_file: triggers.radar.json   # keep radar rules out of the app's triggers.json; created on first app edit
+rules:
+  - name: radar_too_close
+    feel: urgent
+    when: ["too close"]
+    cooldown_s: 2       # repeats every 2 s while something stays inside the zone
+  - name: radar_approaching
+    feel: pulse
+    when: ["something approaching"]
+    if: {unseen: true, min_urgency: 0.6}
+    cooldown_s: 3
+
+sink:
+  type: console         # console | datafeel (USB) | datafeel-ble (Bluetooth, from Terminal.app)
+  ble_name: DataFeelCE  # OUR El Jefe. Never connect to the other kits at the venue.
+
+log: logs/radar_events.jsonl
+
+server:
+  enabled: true
+  port: 8765

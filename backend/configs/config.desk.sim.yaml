@@ -1,0 +1,46 @@
+# Desk test without hardware: the mock scene-camera stills of the desk page (picture on the right, text on the left)
+# with scripted gaze, real Haiku, console sink. No server (so the app keeps talking to the real engine on 8765),
+# no Bluetooth, no radar.
+#   .venv/bin/python backend/desk_test/scene.py          # once: renders logs/desk_sim/desk_*.jpg + lake.mp4
+#   python3 backend/run.py --config backend/configs/config.desk.sim.yaml --seconds 30
+# The scored pre-runs of tests A-D (timelines, hit/miss table) are backend/desk_test/run_sim.py.
+# For the lake clip instead of the pictures: replace `paths`/`hold_s` with  path: ../../logs/desk_sim/lake.mp4
+
+source:
+  type: fake
+  paths: [../../logs/desk_sim/desk_lion.jpg, ../../logs/desk_sim/desk_tiger.jpg, ../../logs/desk_sim/desk_dog.jpg,
+          ../../logs/desk_sim/desk_car.jpg, ../../logs/desk_sim/desk_house.jpg]
+  hold_s: 6                   # like the page: 6 s per picture
+  fps: 15
+  gaze: script
+  gaze_script:                # [t, x, y] normalized frame coords; picture centre ~(0.74, 0.41), text ~(0.24, 0.41)
+    - [0.0, 0.70, 0.43]       # lion: looking at it
+    - [3.0, 0.24, 0.41]       # lion: reading the text
+    - [6.0, 0.24, 0.41]       # tiger: reading the text
+    - [9.0, 0.74, 0.41]       # tiger: looking at it
+    - [12.0, 0.74, 0.41]      # dog / car / house: looking at the picture
+    - [24.0, 0.24, 0.41]
+
+detector:
+  type: vlm
+  model: claude-haiku-5-5
+  max_side: 512
+  jpeg_quality: 70
+  concurrency: 3
+  stream: true
+  max_tokens: 200
+  min_interval_s: 0.4
+  env_file: ../../.env
+
+detect_every_s: 0
+rules_file: ../logs/desk_sim/triggers.desk.sim.json   # under repo-root logs/ (gitignored)
+rules_seed: desk_test/triggers.desk.json              # copied once when rules_file is missing ...
+rules_seed_enable: [big_cat_look, lion_unnoticed]     # ... with these turned on (delete the file to re-seed)
+
+sink:
+  type: console
+
+log: ../logs/desk_sim/desk_sim_events.jsonl
+
+server:
+  enabled: false              # never 8765 here: the real engine with the Dot runs there

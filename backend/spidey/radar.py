@@ -47,6 +47,9 @@ TTC_MAX_S = 4.0            # radar-lab AlertConfig.ttc_max_s
 BACKOFF_S = (1, 2, 3, 4, 5)
 
 
+STALE_S = 0.5
+
+
 def ws_url(url: str) -> str:
     """radar-lab serves the socket at /ws; accept the bare host URL too."""
     p = urlsplit(url)
@@ -95,14 +98,27 @@ class RadarSense:
         self._run_state, self._run_len = "calm", 0
         self._alerting = False               # we emitted a non-calm update and owe a "calm"
         self._geom = dict(distance_m=0.0, speed_mps=0.0, angle_deg=0.0, track_id=None)
+        self._where, self._ttc, self._why = None, None, None
+        self.stale_s = STALE_S                # radar-lab PROTOCOL v2: no frame for > 0.5 s = no information
         self._closing = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task | None = None
         self._thread = threading.Thread(target=self._thread_main, name="radar-sense", daemon=True)
         try:
             self._thread.start()
+            threading.Thread(target=self._stale_watch, name="radar-stale", daemon=True).start()
         except Exception as e:               # never raise from __init__
             print(f"[radar] could not start client thread: {e!r}", flush=True)
+
+    def _stale_watch(self):
+        """Fail safe: an alert must not hang on when the feed stops (server down, board unplugged)."""
+        while not self._closing:
+            time.sleep(0.1)
+            if self._alerting and self._last_rx is not None and time.time() - self._last_rx > self.stale_s:
+                self._emit(dict(self._last or {}, state="calm", confirmed=False, ts=time.time(),
+                                reason="stale", urgency=0.0))
+                self._alerting = False
+                self._run_state, self._run_len = "calm", 0
 
     # ---- public ---------------------------------------------------------------------------
     def status(self) -> dict:
@@ -242,6 +258,9 @@ class RadarSense:
             if prim:
                 geom = (_f(prim.get("r")), _f(prim.get("closing")), _f(prim.get("az_deg")))
                 track_id = prim.get("track", prim.get("id"))
+                # protocol v2: the server's own debounced direction, already in the wearer's frame for a back mount
+                self._where = prim.get("where") or None
+                self._ttc, self._why = prim.get("ttc"), prim.get("why")
             # AlertMachine only raises alerts from confirmed tracks -> a non-calm state is confirmed
             server_confirmed = state != "calm" or bool(prim and prim.get("_confirmed"))
         else:                                             # legacy schema (server.py AlertEngine)
@@ -264,8 +283,15 @@ class RadarSense:
         confirmed = server_confirmed if server_confirmed is not None else self._run_len >= CONFIRM_RUN
         if urgency is None:
             urgency = derived_urgency(state, g["distance_m"], g["speed_mps"])
+        where = self._where if state != "calm" else None
+        if where and self.side_sign < 0:                 # calibration flip applies to the server's direction too
+            where = where.replace("left", "@").replace("right", "left").replace("@", "right")
+        side = side_of(g["angle_deg"])
+        if where:                                         # server direction wins (hysteresis + dwell, mount-aware)
+            side = "left" if "left" in where else "right" if "right" in where else "center"
         return {"state": state, "distance_m": g["distance_m"], "speed_mps": g["speed_mps"],
-                "angle_deg": g["angle_deg"], "side": side_of(g["angle_deg"]), "confirmed": confirmed,
+                "angle_deg": g["angle_deg"], "side": side, "where": where or side,
+                "ttc_s": self._ttc, "server_why": self._why, "confirmed": confirmed,
                 "ts": now, "track_id": g["track_id"], "urgency": _f(urgency),
                 "server_ts": msg.get("t"), "has_target": geom is not None}
 

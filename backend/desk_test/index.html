@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spidey desk test</title>
+<style>
+  /* Layout mirrors backend/desk_test/scene.py LAYOUT (normalized screen coords), so the simulated
+     scene-camera frames match what the Neon sees at the real desk. */
+  :root { --bg: #f6f6f6; --ink: #282828; --bar: #2d323c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+               font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; overflow: hidden; }
+  header { position: fixed; inset: 0 0 auto 0; height: 6.4vh; background: var(--bar); color: #eee;
+           display: flex; align-items: center; gap: 18px; padding: 0 16px; font-size: 15px; z-index: 2; }
+  header b { font-weight: 600; margin-right: 8px; }
+  header button { background: #444b57; color: #eee; border: 0; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  header button.on { background: #e8eaee; color: #222; }
+  header .hint { margin-left: auto; opacity: .7; font-size: 13px; }
+  .text { position: fixed; top: 12vh; bottom: 8vh; overflow: hidden; }
+  .text h2 { margin: 0 0 .6em; font-size: 1.25em; }
+  .panel { position: fixed; background: #000; display: flex; align-items: center; justify-content: center; }
+  .panel img, .panel video, .panel canvas { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
+  /* Tests A/B: text = left third, picture = right third */
+  body.pics .text { left: 3vw; width: 30vw; }
+  body.pics .panel { left: 64vw; width: 33vw; top: 12vh; height: 80vh; }
+  /* Tests C/D: video panel on the right */
+  body.vid .text { left: 3vw; width: 35vw; }
+  body.vid .panel { left: 48vw; width: 49vw; top: 14vh; height: 72vh; }
+  body.pics #vidctl, body.vid #picctl { display: none; }
+  #vidctl { position: fixed; left: 48vw; top: 87vh; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  #vidctl input[type=url] { width: 22vw; }
+  footer { position: fixed; bottom: 4px; right: 12px; font-size: 11px; opacity: .55; }
+  #status { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="pics">
+<header>
+  <b>Spidey Sense desk test</b>
+  <button id="bA" class="on">A/B: pictures</button>
+  <button id="bC">C/D: video</button>
+  <span id="status"></span>
+  <span class="hint">N / → next picture · P pause · R restart video · 1 / 2 switch test</span>
+</header>
+
+<div class="text">
+  <h2>Facilities notes</h2>
+  <p>Quarterly facilities update. The third-floor printer queue is now shared with the east wing, so please collect
+  your pages promptly. Desk bookings for next week open on Monday at nine. The kitchen dishwasher will be serviced on
+  Thursday afternoon; use the second-floor kitchen until it is back.</p>
+  <p>Remember to log expenses before the end of the month and attach scanned receipts in PDF format. The fire drill is
+  scheduled for Wednesday at eleven: leave by the nearest stairwell, not the lift, and gather in the car park by the
+  north gate.</p>
+  <p>Parking permits must be renewed online. Lost property is kept at reception for two weeks. The meeting rooms on
+  level two now have new screens; the cable drawer holds every adapter you need. Please keep the quiet zone quiet.</p>
+</div>
+
+<div class="panel" id="panel">
+  <img id="pic" alt="">
+  <canvas id="lake" width="960" height="700" hidden></canvas>
+  <video id="vid" muted loop playsinline hidden></video>
+</div>
+
+<div id="vidctl">
+  <span>Video:</span>
+  <button id="useLake">synthetic lake scene</button>
+  <input id="url" type="url" placeholder="paste a video URL (webm/mp4)">
+  <button id="loadUrl">load</button>
+  <input id="file" type="file" accept="video/*">
+</div>
+
+<footer>Lion: Kevin Pluck, CC BY 2.0 · tiger, dog, house: public domain · car: CC0 — via Wikimedia Commons (see CREDITS.md)</footer>
+
+<script>
+const PICS = ["lion", "tiger", "dog", "car", "house"], HOLD_MS = 6000;
+let idx = 0, paused = false, timer = null, mode = "pics", lakeT0 = performance.now(), useLake = true;
+const $ = (id) => document.getElementById(id);
+
+function showPic() {
+  $("pic").src = `img/${PICS[idx]}.jpg`;
+  $("status").textContent = `picture ${idx + 1}/${PICS.length}${paused ? " (paused)" : ""}`;
+}
+function schedule() {
+  clearTimeout(timer);
+  if (!paused && mode === "pics") timer = setTimeout(() => { idx = (idx + 1) % PICS.length; showPic(); schedule(); }, HOLD_MS);
+}
+function setMode(m) {
+  mode = m;
+  document.body.className = m;
+  $("bA").classList.toggle("on", m === "pics");
+  $("bC").classList.toggle("on", m === "vid");
+  $("pic").hidden = m !== "pics";
+  $("lake").hidden = !(m === "vid" && useLake);
+  $("vid").hidden = !(m === "vid" && !useLake);
+  if (m === "pics") { showPic(); schedule(); } else { $("status").textContent = useLake ? "synthetic lake scene" : "video"; lakeT0 = performance.now(); }
+}
+
+// ---- synthetic lake scene: same geometry/timeline as scene.py draw_lake() ----
+const PERIOD = 20, FIG_H = 0.34, FOOT_Y = 0.84;
+const shoreX = (y) => 0.70 + 0.025 * Math.sin(y * 14.0);
+function figureX(t) {
+  t = t % PERIOD;
+  if (t < 10) return [0.08 + (0.645 - 0.08) * t / 10, 1];
+  if (t < 14) return [0.645, 1];
+  return [0.645 - (0.645 - 0.08) * (t - 14) / 6, -1];
+}
+function drawLake() {
+  const c = $("lake"), g = c.getContext("2d"), w = c.width, h = c.height;
+  const t = (performance.now() - lakeT0) / 1000, hor = 0.48 * h;
+  const sky = g.createLinearGradient(0, 0, 0, hor);
+  sky.addColorStop(0, "rgb(150,200,235)"); sky.addColorStop(1, "rgb(120,180,195)");
+  g.fillStyle = sky; g.fillRect(0, 0, w, hor);
+  g.fillStyle = "rgb(95,130,90)"; g.beginPath();
+  [[0, hor], [0.2 * w, 0.38 * h], [0.45 * w, 0.44 * h], [0.7 * w, 0.36 * h], [w, 0.43 * h], [w, hor]].forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y));
+  g.fill();
+  g.fillStyle = "rgb(95,160,70)"; g.fillRect(0, hor, w, h - hor);
+  g.fillStyle = "rgb(30,110,180)"; g.beginPath(); g.moveTo(shoreX(hor / h) * w, hor);
+  for (let y = hor; y <= h; y += 4) g.lineTo(shoreX(y / h) * w, y);
+  g.lineTo(w, h); g.lineTo(w, hor); g.fill();
+  g.strokeStyle = "rgb(90,160,215)"; g.lineWidth = 2;
+  for (let i = 0; i < 14; i++) {
+    const yy = hor + 12 + (i * 37) % (h - hor - 12), xx = (0.76 + 0.2 * ((i * 0.37 + t * 0.02) % 1)) * w;
+    g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx + 0.05 * w, yy); g.stroke();
+  }
+  g.fillStyle = "rgb(100,70,40)"; g.fillRect(0.03 * w, 0.42 * h, 0.015 * w, 0.2 * h);
+  g.fillStyle = "rgb(50,110,50)"; g.beginPath(); g.arc(0.038 * w, 0.38 * h, 0.07 * h, 0, 7); g.fill();
+  // the person
+  const [x, face] = figureX(t), fh = FIG_H * h, cx = x * w, foot = FOOT_Y * h;
+  const hip = foot - 0.48 * fh, shoulder = foot - 0.80 * fh, tt = t % PERIOD;
+  const sw = Math.sin(t * 2 * Math.PI * 1.6) * ((tt < 10 || tt >= 14) ? 0.35 : 0), leg = 0.48 * fh;
+  g.lineCap = "round";
+  for (const s of [sw, -sw]) {
+    const fx = cx + Math.sin(s) * leg, fy = hip + Math.cos(s) * leg;
+    g.strokeStyle = "rgb(30,60,120)"; g.lineWidth = Math.max(3, 0.06 * fh);
+    g.beginPath(); g.moveTo(cx, hip); g.lineTo(fx, fy); g.stroke();
+    g.fillStyle = "rgb(30,30,30)"; g.beginPath(); g.ellipse(fx + face * 0.03 * fh, fy, 0.05 * fh, 0.02 * fh, 0, 0, 7); g.fill();
+  }
+  g.fillStyle = "rgb(210,40,40)"; g.beginPath();
+  g.moveTo(cx - 0.09 * fh, shoulder); g.lineTo(cx + 0.09 * fh, shoulder); g.lineTo(cx + 0.07 * fh, hip); g.lineTo(cx - 0.07 * fh, hip); g.fill();
+  g.strokeStyle = "rgb(225,180,150)"; g.lineWidth = Math.max(2, 0.04 * fh);
+  for (const s of [-sw, sw]) { g.beginPath(); g.moveTo(cx, shoulder + 0.03 * fh); g.lineTo(cx + Math.sin(s) * 0.35 * fh, shoulder + Math.cos(s) * 0.35 * fh); g.stroke(); }
+  g.fillStyle = "rgb(225,180,150)"; g.beginPath(); g.arc(cx, shoulder - 0.11 * fh, 0.1 * fh, 0, 7); g.fill();
+  g.fillStyle = "rgb(60,40,30)"; g.beginPath(); g.ellipse(cx, shoulder - 0.15 * fh, 0.1 * fh, 0.06 * fh, 0, Math.PI, 2 * Math.PI); g.fill();
+  if (mode === "vid" && useLake) $("status").textContent = `synthetic lake scene · t=${tt.toFixed(1)} s`;
+}
+(function loop() { if (mode === "vid" && useLake && !paused) drawLake(); requestAnimationFrame(loop); })();
+
+function playVideo(src) { useLake = false; const v = $("vid"); v.src = src; v.play(); setMode("vid"); }
+$("useLake").onclick = () => { useLake = true; $("vid").pause(); setMode("vid"); };
+$("loadUrl").onclick = () => { const u = $("url").value.trim(); if (u) playVideo(u); };
+$("file").onchange = (e) => { const f = e.target.files[0]; if (f) playVideo(URL.createObjectURL(f)); };
+$("bA").onclick = () => setMode("pics");
+$("bC").onclick = () => setMode("vid");
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if (k === "n" || e.key === "ArrowRight") { idx = (idx + 1) % PICS.length; showPic(); schedule(); }
+  else if (e.key === "ArrowLeft") { idx = (idx + PICS.length - 1) % PICS.length; showPic(); schedule(); }
+  else if (k === "p" || k === " ") { paused = !paused; if (mode === "pics") { showPic(); schedule(); } else { const v = $("vid"); paused ? v.pause() : v.play(); } e.preventDefault(); }
+  else if (k === "r") { lakeT0 = performance.now(); const v = $("vid"); if (!useLake) { v.currentTime = 0; v.play(); } }
+  else if (k === "1") setMode("pics");
+  else if (k === "2") setMode("vid");
+});
+const q = new URLSearchParams(location.search);
+if (q.get("test") && /^[cd]/i.test(q.get("test"))) setMode("vid"); else setMode("pics");
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "rules": [
+    {"id": "blindspot", "name": "blindspot", "enabled": false, "kind": "builtin", "describe": "", "source": "neon",
+     "when": "any", "if": {"unseen": true, "min_urgency": 0.6}, "feel": "urgent", "intensity": null, "rgb": null,
+     "dot": null, "cooldown_s": 3.0, "gaze_mode": "unseen", "notice_memory_s": 3.0, "temporal": false},
+    {"id": "big_cat_look", "name": "Big cat (looking)", "enabled": false, "kind": "custom",
+     "describe": "a big cat such as a lion or tiger", "source": "neon", "when": "any", "if": {"min_urgency": 0.0},
+     "feel": "pulse", "intensity": 0.8, "rgb": [255, 160, 0], "dot": null, "cooldown_s": 4.0,
+     "gaze_mode": "looking_at", "notice_memory_s": 3.0, "temporal": false},
+    {"id": "lion_unnoticed", "name": "Lion unnoticed", "enabled": false, "kind": "custom",
+     "describe": "a lion or tiger", "source": "neon", "when": "any", "if": {"min_urgency": 0.0},
+     "feel": "urgent", "intensity": 1.0, "rgb": [255, 0, 0], "dot": null, "cooldown_s": 3.0,
+     "gaze_mode": "unseen", "notice_memory_s": 3.0, "temporal": false},
+    {"id": "person_to_water", "name": "Person to water", "enabled": false, "kind": "custom",
+     "describe": "a person getting close to the edge of water (lake/river/sea) compared to earlier frames",
+     "source": "neon", "when": "any", "if": {"min_urgency": 0.0}, "feel": "pulse", "intensity": 0.8,
+     "rgb": [0, 120, 255], "dot": null, "cooldown_s": 4.0, "gaze_mode": "any", "notice_memory_s": 3.0,
+     "temporal": true, "trend": {"ticks": 3, "sensitivity": "medium"}},
+    {"id": "person_to_water_unwatched", "name": "Person to water (unwatched)", "enabled": false, "kind": "custom",
+     "describe": "a person getting close to the edge of water (lake/river/sea) compared to earlier frames",
+     "source": "neon", "when": "any", "if": {"min_urgency": 0.0}, "feel": "urgent", "intensity": 1.0,
+     "rgb": [0, 60, 255], "dot": null, "cooldown_s": 4.0, "gaze_mode": "unseen", "notice_memory_s": 3.0,
+     "temporal": true, "trend": {"ticks": 3, "sensitivity": "medium"}},
+    {"id": "someone_behind", "name": "Someone behind me", "enabled": false, "kind": "custom",
+     "describe": "", "source": "radar", "when": "any", "if": {"max_distance_m": 2.0, "min_speed_mps": 0.3},
+     "feel": "urgent", "intensity": 1.0, "rgb": [255, 0, 0], "dot": null, "cooldown_s": 3.0,
+     "gaze_mode": "unseen", "notice_memory_s": 3.0, "temporal": false}
+  ]
+}

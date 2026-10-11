@@ -1,0 +1,53 @@
+# Neon + Haiku VLM *and* radar: a radar alert (fast, works in the dark / behind you) wins; otherwise the
+# VLM's detection passes through. Copy to spidey-sense backend/configs/ (see INTEGRATION.md).
+#   python3 backend/run.py --config backend/configs/config.vlm_radar.yaml
+
+source:
+  type: neon
+  mode: realtime
+
+detector:
+  type: combined
+  primary:              # any normal detector block
+    type: vlm
+    model: claude-haiku-5-5
+    max_side: 384
+    jpeg_quality: 70
+    concurrency: 2
+    stream: true
+    max_tokens: 200
+    min_interval_s: 0.4
+    # env_file is NOT path-resolved when nested here: rely on ANTHROPIC_API_KEY, or give an absolute path
+  radar:
+    url: ws://localhost:8090/ws
+    mount: back
+    seen_by_user: false
+    stale_s: 0.5
+
+detect_every_s: 0       # must be 0: otherwise the radar is only polled at that rate
+
+rules_file: triggers.json        # the app's rules (vision) ...
+rules:                           # ... used only if triggers.json doesn't exist yet
+  - name: blindspot
+    feel: urgent
+    if: {unseen: true, min_urgency: 0.6}
+    cooldown_s: 3
+  - name: radar_too_close
+    feel: urgent
+    when: ["too close"]
+    cooldown_s: 2
+  - name: radar_approaching
+    feel: pulse
+    when: ["something approaching"]
+    if: {unseen: true, min_urgency: 0.6}
+    cooldown_s: 3
+
+sink:
+  type: console
+  ble_name: DataFeelCE
+
+log: logs/events.jsonl
+
+server:
+  enabled: true
+  port: 8765

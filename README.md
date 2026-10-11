@@ -34,7 +34,9 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `backend/` | Python package `spidey` (engine, rules, sources, detectors, sinks, WebSocket server), `run.py`, `configs/`, `playground/` |
 | `haptics/` | DataFeel Dots: `spidey_haptics.py` (patterns, CLI), `dots/ble.py` (Bluetooth transport), `dots/fastfire.py` (2-write triggers), tests, `vendor/datafeel-python` (MIT SDK) |
 | `neon/` | `neon_app`: Pupil Labs Neon gaze + scene sources (Capture over USB, or Companion phone over Wi-Fi) |
-| `vlm/` | vision test scenes, latency report (detector code is `backend/spidey/detectors.py`) |
+| `vlm/` | vision test scenes, latency report, desk-test results (detector code is `backend/spidey/detectors.py`) |
+| `backend/desk_test/` | desk test page (Commons images, see its `CREDITS.md`; synthetic lake scene), simulator harness, offline checks |
+| `radar/` | radar sense docs + calibration; `adapter/` = radar-lab's adapter + protocol v2 (reference) |
 | `ios/` | SwiftUI app: Log / Senses / Devices / Haptics / Settings (zero-config connect) |
 | `docs/` | `STATUS.md` (current state, one page), `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped), `deck/` (slides) |
 | `scripts/` | setup, API key, playground, Bluetooth test/latency |
@@ -81,6 +83,26 @@ Connection order: `source.host` / the IP argument → the Mac's default gateway 
 discovery is blocked, set `source.host: <phone ip>` in `config.neon.yaml`. Frame timestamps are converted to the
 Mac's clock with Pupil Labs Time Echo, so `e2e_ms` in the log is glasses capture → cue.
 
+**Desk tests: attention-aware triggers** (from the app's Senses templates; turn on one at a time):
+
+| Test | Trigger id | Expect |
+|---|---|---|
+| A: look at a big cat | `big_cat_look` (looking_at) | buzz while looking at the lion/tiger; nothing for the dog/car/house |
+| B: lion you haven't noticed | `lion_unnoticed` (unseen, 3 s notice memory) | buzz while reading the text with the lion in view; silent once you look at it |
+| C: person approaching water | `person_to_water` (temporal, any) | buzz as the person nears the water edge; nothing while far or walking away |
+| D: same, only if you're not watching | `person_to_water_unwatched` (temporal, unseen) | buzz only while you look at the text |
+| E: someone behind you | `someone_behind` (radar, within 2 m, ≥ 0.3 m/s) | buzz when someone walks up; walk-bys ignored |
+
+```bash
+./scripts/desk_test.sh                     # desk test page on :8095 (lion etc. on the right, text on the left; ?test=C for the lake)
+~/Downloads/radar-lab/.venv/bin/python ~/Downloads/radar-lab/server.py      # radar (board); --scenario approach without it
+./scripts/engine_ble.sh --config backend/configs/config.desk.yaml          # Neon + Haiku + radar + Dot (Terminal.app)
+./scripts/desk_test.sh prerun              # dry runs on simulated scenes + scripted gaze (real Haiku)
+./scripts/desk_test.sh check               # offline engine checks
+```
+"Seen" comes from your real gaze history overlapping the object's box (from Haiku), not from Haiku's guess. Over-time
+triggers keep only relative signals (the gap in body-heights, looming, closer/same/farther). See `docs/architecture.md`.
+
 **iOS app: zero setup.** Open `ios/SpideySense/SpideySense.xcodeproj` (or `cd ios/SpideySense && xcodegen generate`)
 and press Run. Phone and Mac on the same Wi-Fi is the only assumption:
 - The app finds the engine by itself: a custom URL (if you set one) → **Bonjour** (the engine advertises
@@ -105,6 +127,8 @@ chart; STOP ALL) · **Settings** (intensity, quiet, server URL source).
 | Neon + Haiku through the engine (hotspot) | Haiku 1.1 s median, e2e (glasses capture → cue) 1.6 s median, 1.9 s p90 |
 | El Jefe health check (BLE register read) | ~60 ms; app → Mac → Dot link ping ~60 ms |
 | Master intensity 0.3, `urgent` via engine over BLE | 253 ms (weaker waveform variants) |
+| Desk dry runs A–D (sim scene, scripted gaze, real Haiku, 512 px) | all pass; frame→fire 1.2–1.3 s (single image), 1.5–1.65 s (temporal, 3 images) |
+| Radar frame → cue | ~29 ms median (radar-lab) + ~4 ms server→sense; + ~117 ms BLE buzz ≈ 0.15 s |
 
 ## Keeping this README current
 
@@ -117,5 +141,8 @@ in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CL
   from DataFeel's NuGet packages `Datafeel.NET.BLE` / `CallAndResponse.Transport.Ble`.
 - **Pupil Labs** Neon, the Real-time API (`pupil-labs-realtime-api`) and Pupil Capture network API.
 - **Anthropic** Python SDK, Claude Haiku 5.5.
+- **radar-lab** (radar workstream): `server.py` (Infineon BGT60TR13C via the Infineon Radar SDK), tracking + debounced
+  alerts, feed protocol v2 and the Spidey adapter (`radar/adapter/`).
+- Desk test images from Wikimedia Commons; the lion is CC BY 2.0 by Kevin Pluck. Full list: `backend/desk_test/CREDITS.md`.
 - `bleak`, `minimalmodbus`, `pyserial`, `websockets`, FastAPI, OpenCV.
 - Later: `open_oura` for Oura ring heart rate.
