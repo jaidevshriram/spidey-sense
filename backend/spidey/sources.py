@@ -146,7 +146,8 @@ class NeonSource(GazeFrameSource):
 
     APP_DIR = Path(__file__).resolve().parents[2] / "neon"
 
-    def __init__(self, mode: str = "realtime", host: str | None = None, app_dir: str | None = None):
+    def __init__(self, mode: str = "realtime", host: str | None = None, app_dir: str | None = None,
+                 max_frame_age_ms: float = 600, keep_every: int = 30):
         app = Path(app_dir).expanduser() if app_dir else self.APP_DIR
         sys.path.insert(0, str(app))
         from neon_app import open_source  # lazy: only needed with real hardware
@@ -158,6 +159,10 @@ class NeonSource(GazeFrameSource):
         self._recent_ages: list[float] = []
         self._worn: bool | None = None
         self._battery: tuple[float, int | None] = (0.0, None)   # (checked_at, percent)
+        # backlog drain: frames older than this are dropped so we always work on "now" (hotspot hiccups
+        # queue up seconds of video); every keep_every-th old frame still passes so a slow link never starves
+        self.max_frame_age_ms, self.keep_every = max_frame_age_ms, keep_every
+        self._dropped, self._drop_run = 0, 0
 
     def stats(self) -> dict:
         """worn / battery / delay_ms for the app's status message. Battery comes from the Companion's
@@ -198,6 +203,14 @@ class NeonSource(GazeFrameSource):
                           f"p90 {a[int(len(a) * .9)]:.0f} ms · gaze {'ok' if gaze else 'NOT WORN'}", flush=True)
                     self._ages.clear()
                 ts = s.t if 0 <= age < 5000 else now
+                if age > self.max_frame_age_ms and self._drop_run < self.keep_every:
+                    self._dropped += 1
+                    self._drop_run += 1
+                    if self._dropped % 100 == 1:
+                        print(f"[neon] dropping stale frames (age {age:.0f} ms > {self.max_frame_age_ms:.0f}); "
+                              f"{self._dropped} dropped so far", flush=True)
+                    continue
+                self._drop_run = 0
             else:
                 ts = now   # Capture's s.t is Pupil time, not unix time: use local receive time
             yield Frame(ts=ts, image=s.frame, gaze_xy=gaze, gaze_norm=False)
