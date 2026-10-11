@@ -12,9 +12,31 @@ enum MockData {
                   cond: RuleCondition(metric: "cpu_temp_c", valueGt: 90), feel: "ambient", dot: 2, cooldownS: 60),
     ]
 
+    /// One-tap plain-English templates for the Add trigger sheet.
+    static let customTemplates: [SenseRule] = [
+        custom("knife_nearby", "Knife nearby",
+               "someone holding a knife or a knife within reach, and I haven't looked at it",
+               feel: "urgent"),
+        custom("someone_behind_me", "Someone behind me",
+               "a person approaching from the side or behind, outside where I'm looking",
+               feel: "pulse"),
+        custom("stairs_step_down", "Stairs / step down", "a step, stairs or a drop ahead of me",
+               feel: "ambient"),
+    ]
+
+    static func custom(_ id: String, _ name: String, _ describe: String, feel: String,
+                       intensity: Double = 1, minUrgency: Double = 0.5, cooldown: Double = 5) -> SenseRule {
+        SenseRule(id: id, name: name, source: SenseSource.neon.rawValue, when: .any,
+                  cond: RuleCondition(unseen: true, minUrgency: minUrgency), feel: feel, dot: nil, cooldownS: cooldown,
+                  kind: "custom", describe: describe, intensity: intensity, rgb: TriggerColor.defaultRGB(feel))
+    }
+
     static var rules: [SenseRule] {
-        var r = presets
+        var r = presets.map { p -> SenseRule in var p = p; p.kind = "builtin"; return p }
         r[2].enabled = false
+        var knife = customTemplates[0]
+        knife.intensity = 0.8
+        r.insert(knife, at: 1)
         return r
     }
 
@@ -35,21 +57,29 @@ enum MockData {
 
     static let events: [HapticEvent] = {
         let now = Date().timeIntervalSince1970
-        let rows: [(String, String, String, Bool, Double, String, Double)] = [
-            ("urgent", "bike", "left", false, 0.86, "blindspot", 12),
-            ("ambient", "person", "right", true, 0.35, "heads_up", 47),
-            ("urgent", "car", "behind-left", false, 0.92, "blindspot", 95),
-            ("pulse", "heart rate", "", false, 0.5, "heartbeat_shift", 160),
+        // (pattern, hazard, where, seen, urgency, trigger id, trigger name, seconds ago, why)
+        let rows: [(String, String, String, Bool, Double, String, String, Double, String?)] = [
+            ("urgent", "knife", "right", false, 0.81, "knife_nearby", "Knife nearby", 6,
+             "Person at the counter on your right is holding a kitchen knife; you're looking left."),
+            ("urgent", "bike", "left", false, 0.86, "blindspot", "Blindspot", 12,
+             "Cyclist closing fast on your left, outside your gaze."),
+            ("ambient", "person", "right", true, 0.35, "heads_up", "heads_up", 47, nil),
+            ("urgent", "car", "behind-left", false, 0.92, "blindspot", "Blindspot", 95,
+             "Car reversing behind-left; you haven't looked that way."),
+            ("pulse", "heart rate", "", false, 0.5, "heartbeat_shift", "Heartbeat shift", 160, nil),
         ]
         return rows.enumerated().compactMap { i, r in
-            HapticEvent([
-                "id": 900 + i, "ts": now - r.6, "pattern": r.0, "dot": NSNull(), "rule": r.5,
+            var d: [String: Any] = [
+                "id": 900 + i, "ts": now - r.7, "pattern": r.0, "dot": NSNull(), "rule": r.5,
+                "trigger": r.5, "trigger_name": r.6,
                 "reason": r.5 == "heartbeat_shift" ? "heartbeat_shift: HR 94 bpm, 2-min median 74 ± 15"
                     : "\(r.5): \(r.1) \(r.2) \(r.3 ? "seen" : "unseen") u=\(String(format: "%.2f", r.4))",
                 "detection": ["hazard": r.1, "where": r.2.isEmpty ? NSNull() : r.2,
                               "seen_by_user": r.3, "urgency": r.4] as [String: Any],
                 "latency_ms": 80 + Double(i) * 7, "sample": true,
-            ])
+            ]
+            if let why = r.8 { d["why"] = why }
+            return HapticEvent(d)
         }
     }()
 

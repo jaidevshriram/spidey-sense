@@ -18,6 +18,8 @@ final class EventStream {
     private(set) var settings = EngineSettings()
     /// True until a hello with rules arrives from a real engine.
     private(set) var rulesAreSample = true
+    /// When the engine last sent its rule list (hello or rules.list).
+    private(set) var rulesEchoedAt: Date?
     private(set) var devicesAreSample = true
     private(set) var devicesUpdatedAt: Date?
     /// Last ack / error from the engine, shown as a toast-ish line in Settings.
@@ -127,14 +129,14 @@ final class EventStream {
         case "hello":
             for e in obj["history"] as? [[String: Any]] ?? [] { add(e) }
             if let h = try? dec.decode(HelloMessage.self, from: data) {
-                if let r = h.rules { rules = r; rulesAreSample = false }
+                if let r = h.rules { applyEcho(r) }
                 if let d = h.devices { setDevices(d) }
                 if let s = h.settings { settings = s }
             }
         case "event":
             add(obj)
         case "rules.list":
-            if let m = try? dec.decode(RulesListMessage.self, from: data) { rules = m.rules; rulesAreSample = false }
+            if let m = try? dec.decode(RulesListMessage.self, from: data) { applyEcho(m.rules) }
         case "device.status":
             if let m = try? dec.decode(DeviceStatusMessage.self, from: data) { setDevices(m.devices) }
         case "settings":
@@ -157,6 +159,27 @@ final class EventStream {
         default:
             break
         }
+    }
+
+    /// The engine's rule list is the source of truth: it replaces any optimistic local edits.
+    /// Older engines drop kind/describe/intensity/rgb from their echo; for those (no rule in the echo
+    /// carries any trigger field) keep the extras this phone last sent for the same id, so a custom
+    /// trigger doesn't turn into a blank built-in. Newer engines' echoes are taken as-is.
+    private func applyEcho(_ echoed: [SenseRule]) {
+        let engineKnowsTriggers = echoed.contains { $0.hasTriggerExtras }
+        if engineKnowsTriggers || rulesAreSample {
+            rules = echoed
+        } else {
+            let mine = Dictionary(rules.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            rules = echoed.map { r in
+                guard let old = mine[r.id], old.hasTriggerExtras else { return r }
+                var m = r
+                m.kind = old.kind; m.describe = old.describe; m.intensity = old.intensity; m.rgb = old.rgb
+                return m
+            }
+        }
+        rulesAreSample = false
+        rulesEchoedAt = Date()
     }
 
     private func setDevices(_ d: [DeviceInfo]) {
@@ -253,6 +276,12 @@ final class EventStream {
     func deleteRule(id: String) {
         rules.removeAll { $0.id == id }
         send(RulesDelete(id: id))
+    }
+
+    /// Restore the engine's default triggers. Offline: back to this phone's sample set.
+    func resetRules() {
+        if rulesAreSample { rules = MockData.rules; lastAck = "sample triggers reset on this phone"; return }
+        send(RulesReset())   // the engine answers with rules.list
     }
 
     func feedback(_ e: HapticEvent, _ v: Verdict) {

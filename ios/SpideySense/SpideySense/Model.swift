@@ -14,6 +14,9 @@ struct HapticEvent: Identifiable {
     let urgency: Double?
     let latencyMs: Double?
     let quiet: Bool            // engine was in quiet mode: logged, not felt
+    let trigger: String?       // id of the trigger that fired (newer engines)
+    let triggerName: String?   // its display name
+    let why: String?           // Haiku's one-line reason (newer engines)
     let raw: [String: Any]
 
     init?(_ d: [String: Any]) {
@@ -31,6 +34,9 @@ struct HapticEvent: Identifiable {
         urgency = (det["urgency"] as? NSNumber)?.doubleValue
         latencyMs = (d["latency_ms"] as? NSNumber)?.doubleValue
         quiet = d["quiet"] as? Bool ?? false
+        trigger = (d["trigger"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        triggerName = (d["trigger_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        why = (d["why"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         var r = d
         r.removeValue(forKey: "type")
         raw = r
@@ -40,6 +46,11 @@ struct HapticEvent: Identifiable {
     var key: String { "\(id)@\(ts)" }
 
     var date: Date { Date(timeIntervalSince1970: ts) }
+
+    /// Trigger id for filtering: `trigger`, else the engine's slug of the rule name (older engines send the name).
+    var triggerID: String { trigger ?? triggerSlug(rule) }
+    /// Label for the row: `trigger_name`, falling back to `rule`.
+    var triggerLabel: String { triggerName ?? rule }
 
     /// Built by MockData for the offline demo, never from the engine.
     var isSample: Bool { raw["sample"] as? Bool ?? false }
@@ -82,4 +93,15 @@ struct PingResult: Hashable {
     let bleMs: Double?         // Mac <-> El Jefe <-> Dot register read
     let flashMs: Double?       // LED flash write
     var appMacMs: Double { max(0, rttMs - (macMs ?? 0)) }
+}
+
+/// Same as the engine's `rules.slug`: lowercase, runs of non [a-z0-9] -> "_", trimmed.
+func triggerSlug(_ s: String, fallback: String = "rule") -> String {
+    var out = "", lastUnderscore = false
+    for ch in s.lowercased() {
+        if ch.isASCII && (ch.isLetter || ch.isNumber) { out.append(ch); lastUnderscore = false }
+        else if !lastUnderscore { out.append("_"); lastUnderscore = true }
+    }
+    let t = out.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+    return t.isEmpty ? fallback : t
 }

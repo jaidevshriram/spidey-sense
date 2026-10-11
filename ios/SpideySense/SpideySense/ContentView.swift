@@ -54,14 +54,14 @@ struct LogView: View {
     let stream: EventStream
     let serverURL: String
     @State private var selected: HapticEvent?
-    @State private var senseFilter: String?   // nil = all senses
+    @State private var senseFilter: String?   // trigger id; nil = all senses
     @State private var unreachable = false     // offline for more than 3 s
 
     private var showingSample: Bool { stream.events.isEmpty && !stream.isLive }
     private var source: [HapticEvent] { showingSample ? MockData.events : stream.events }
     private var shown: [HapticEvent] {
         guard let f = senseFilter else { return source }
-        return source.filter { $0.rule == f }
+        return source.filter { $0.triggerID == f }
     }
     /// Events plus system rows (engine `system` messages, local WebSocket drops), newest first.
     /// A sense filter shows only that sense's events.
@@ -70,8 +70,15 @@ struct LogView: View {
         guard senseFilter == nil else { return ev }
         return (ev + stream.systemRows.map(LogItem.system)).sorted { $0.ts > $1.ts }
     }
-    private var senseNames: [String] {
-        Array(Set(source.map(\.rule) + stream.rules.map(\.name)).filter { !$0.isEmpty }).sorted()
+    /// (trigger id, display name) for the filter menu: the engine's triggers plus any ids seen in the log.
+    private var senseOptions: [(id: String, name: String)] {
+        var names: [String: String] = [:]
+        for e in source where !e.rule.isEmpty || e.trigger != nil { names[e.triggerID] = names[e.triggerID] ?? e.triggerLabel }
+        for r in stream.rules { names[r.id] = r.name }
+        return names.map { (id: $0.key, name: $0.value) }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    private var filterName: String? {
+        senseFilter.map { f in senseOptions.first { $0.id == f }?.name ?? f }
     }
 
     var body: some View {
@@ -106,7 +113,7 @@ struct LogView: View {
             .listStyle(.plain)
             .overlay {
                 if items.isEmpty && !showingSample {
-                    ContentUnavailableView(senseFilter == nil ? "Waiting for events" : "No \(senseFilter!) events",
+                    ContentUnavailableView(senseFilter == nil ? "Waiting for events" : "No \(filterName ?? "") events",
                                            systemImage: "waveform", description: Text(serverURL))
                 }
             }
@@ -118,10 +125,10 @@ struct LogView: View {
                     Menu {
                         Picker("Sense", selection: $senseFilter) {
                             Text("All senses").tag(String?.none)
-                            ForEach(senseNames, id: \.self) { Text($0).tag(Optional($0)) }
+                            ForEach(senseOptions, id: \.id) { Text($0.name).tag(Optional($0.id)) }
                         }
                     } label: {
-                        Label(senseFilter ?? "All senses",
+                        Label(filterName ?? "All senses",
                               systemImage: senseFilter == nil ? "line.3.horizontal.decrease.circle"
                                                               : "line.3.horizontal.decrease.circle.fill")
                             .labelStyle(.titleAndIcon)
@@ -260,8 +267,15 @@ struct EventRow: View {
                     Text(String(format: "%.2f", u)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
             }
-            Text(event.reason.isEmpty ? event.rule : event.reason)
+            // Haiku's one-line reason when the engine sends it; the engine's reason string stays in the detail JSON.
+            Text(event.why ?? (event.reason.isEmpty ? event.rule : event.reason))
                 .font(.callout).foregroundStyle(.primary)
+            if !event.triggerLabel.isEmpty {
+                Label(event.triggerLabel, systemImage: "bolt.fill")
+                    .font(.caption2.bold()).foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
+                    .accessibilityLabel("Trigger \(event.triggerLabel)")
+            }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

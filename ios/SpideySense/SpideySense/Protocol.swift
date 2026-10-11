@@ -3,10 +3,10 @@ import Foundation
 // Wire protocol between the app and the Mac engine. Keep in sync with docs/protocol.md
 // and spidey/server.py + spidey/engine.py (Controller).
 //
-// server -> app: hello{history, rules, devices, settings}, event{...}, rules.list{rules},
+// server -> app: hello{history, rules, devices, settings}, event{..., trigger?, trigger_name?, why?}, rules.list{rules},
 //                device.status{devices}, settings{quiet, intensity}, ack{for, ok, ms, ...}, error{error},
 //                haptic.telemetry{...}, link.pong{...}, system{ts, level, text}
-// app -> server: rules.upsert{rule}, rules.delete{id}, feedback{event_id, ts, verdict},
+// app -> server: rules.upsert{rule}, rules.delete{id}, rules.reset{}, feedback{event_id, ts, verdict},
 //                command{name, args}, haptic.subscribe/led/vibe.sequence/vibe.manual/preset/thermal/stop_all,
 //                link.ping{id, t_app, flash}
 //
@@ -86,19 +86,26 @@ struct SenseRule: Codable, Identifiable, Hashable {
     var feel: String = "urgent"
     var dot: Int?               // 1-based; nil = all dots. 1 = left, 2 = right (TODO: confirm layout)
     var cooldownS: Double = 3
+    // Triggers (docs/protocol.md "plain-English custom triggers"). All optional: older engines omit them.
+    var kind: String?           // "builtin" | "custom"; nil = builtin (older engine)
+    var describe: String?       // custom only: plain-English description judged by Haiku
+    var intensity: Double?      // 0...1 per-trigger vibration strength; nil = 100 %
+    var rgb: [Int]?             // LED colour override [r, g, b]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, enabled, source, when, feel, dot
+        case id, name, enabled, source, when, feel, dot, kind, describe, intensity, rgb
         case cond = "if", cooldownS = "cooldown_s"
     }
 
     init(id: String, name: String, enabled: Bool = true, source: String = "neon", when: RuleWhen = .any,
-         cond: RuleCondition = RuleCondition(), feel: String = "urgent", dot: Int? = nil, cooldownS: Double = 3) {
+         cond: RuleCondition = RuleCondition(), feel: String = "urgent", dot: Int? = nil, cooldownS: Double = 3,
+         kind: String? = nil, describe: String? = nil, intensity: Double? = nil, rgb: [Int]? = nil) {
         self.id = id; self.name = name; self.enabled = enabled; self.source = source; self.when = when
         self.cond = cond; self.feel = feel; self.dot = dot; self.cooldownS = cooldownS
+        self.kind = kind; self.describe = describe; self.intensity = intensity; self.rgb = rgb
     }
 
-    // Tolerant decoding: everything but id/name has a default.
+    // Tolerant decoding: everything but id/name has a default; new trigger fields are lenient.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? "rule"
@@ -110,6 +117,10 @@ struct SenseRule: Codable, Identifiable, Hashable {
         feel = try c.decodeIfPresent(String.self, forKey: .feel) ?? "urgent"
         dot = try c.decodeIfPresent(Int.self, forKey: .dot)
         cooldownS = try c.decodeIfPresent(Double.self, forKey: .cooldownS) ?? 3
+        kind = c.lenient(String.self, .kind)
+        describe = c.lenient(String.self, .describe)
+        intensity = c.lenient(Double.self, .intensity)
+        rgb = c.lenient([Int].self, .rgb).flatMap { $0.count == 3 ? $0 : nil }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -119,9 +130,18 @@ struct SenseRule: Codable, Identifiable, Hashable {
         try c.encode(when, forKey: .when); try c.encode(cond, forKey: .cond)
         try c.encode(feel, forKey: .feel); try c.encode(dot, forKey: .dot)   // null = all dots
         try c.encode(cooldownS, forKey: .cooldownS)
+        try c.encodeIfPresent(kind, forKey: .kind)
+        try c.encodeIfPresent(describe, forKey: .describe)
+        try c.encodeIfPresent(intensity, forKey: .intensity)
+        try c.encodeIfPresent(rgb, forKey: .rgb)
     }
 
     var senseSource: SenseSource? { SenseSource(rawValue: source) }
+    /// Custom = plain-English trigger judged by Haiku. Missing kind (older engine) = built-in,
+    /// unless a description is present.
+    var isCustom: Bool { kind == "custom" || (kind == nil && !(describe ?? "").isEmpty) }
+    /// The extra trigger fields an older engine may drop from its echo.
+    var hasTriggerExtras: Bool { kind != nil || describe != nil || intensity != nil || rgb != nil }
 }
 
 // MARK: - Devices and settings
@@ -338,6 +358,8 @@ enum Verdict: String, Codable { case useful, noisy }
 
 struct RulesUpsert: Encodable { let type = "rules.upsert"; var rule: SenseRule }
 struct RulesDelete: Encodable { let type = "rules.delete"; var id: String }
+/// Restore the engine's default triggers (blindspot + heads_up); it replies with rules.list.
+struct RulesReset: Encodable { let type = "rules.reset" }
 struct FeedbackMessage: Encodable {
     let type = "feedback"
     var eventId: Int

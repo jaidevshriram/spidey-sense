@@ -277,3 +277,14 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - Jaidev drove the real Dot from the iOS app (simulator) through the engine over BLE: "it worked!"
 - Working wirelessly now: app ↔ Mac (WebSocket, zero-config), Mac ↔ El Jefe (BLE, ~60–145 ms reads, ~117 ms to buzz),
   Haiku vision on test scenes (~0.9 s/call). Next: real Neon via the Companion phone, Haiku on real clips, demo story.
+
+### 18:06 iOS Senses tab = triggers (plain-English custom triggers)
+- Senses list: on/off toggle per trigger (rules.upsert, reconciled with the echoed rules.list), Built-in / Custom badges;
+  custom rows show the description (2 lines) and "Feel pulse · 60% · ● · cooldown 5s · only if unseen". Tap to edit,
+  swipe to delete (confirm for built-ins), "…" menu → Reset to defaults (rules.reset, confirm).
+- Add/Edit trigger sheet: name (auto-suggested from the description), description, pattern + intensity + LED colour
+  (default by pattern), only-if-unseen, min urgency, cooldown 1–60 s, dot. Quick starts: Knife nearby / Someone behind me /
+  Stairs plus the Blindspot / Heartbeat / Machine presets. Log rows show the trigger name and Haiku's `why`; filter by trigger id.
+- Tested in a simulator against a console-sink engine on :8799 (temp triggers.json): add (Knife nearby template),
+  toggle off/on, edit to pulse 60% pink, delete, built-in delete confirm, reset → blindspot + heads_up; each change landed in triggers.json.
+  Screenshots: ios/screenshots/senses-triggers.png, add-trigger.png, log-why.png (sample data).
