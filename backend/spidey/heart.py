@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import json
 import os
 import random
 import re
@@ -209,6 +210,8 @@ def oura_card(status: dict | None, now: float | None = None) -> dict:
     backend = status.get("backend")
     if backend == "open_oura":
         st = "connected" if fresh else "disconnected"
+    elif backend == "oura_cloud":           # readings arrive minutes late by design: connected = API reachable
+        st = "connected" if status.get("connected") else "disconnected"
     else:
         st = "simulated" if status.get("connected") or fresh else "disconnected"
     bits = [backend]
@@ -454,8 +457,10 @@ class HeartRateSense:
                 self._run_fake()
             elif self.backend == "open_oura":
                 self._run_open_oura()
+            elif self.backend == "oura_cloud":
+                self._run_oura_cloud()
             else:
-                self._set(False, f"unknown backend {self.backend!r} (replay | fake | open_oura)")
+                self._set(False, f"unknown backend {self.backend!r} (replay | fake | open_oura | oura_cloud)")
                 print(f"[heart] {self._detail}", flush=True)
         except Exception as e:                      # never let the thread die loudly
             self._set(False, f"{type(e).__name__}: {e}")
@@ -501,6 +506,40 @@ class HeartRateSense:
             if delay > 0 and self._stop.wait(delay):
                 return
             self._emit(origin + (t_s - first), bpm)
+
+    # ---- Oura cloud (API v2) -------------------------------------------------------------------
+    def _run_oura_cloud(self):
+        """Polls GET /v2/usercollection/heartrate (the ring syncs to the phone app, the app uploads: readings arrive
+        minutes late, ~5-min spacing). Token: OURA_TOKEN (personal access token or OAuth access token) in .env, or
+        the OAuth token file written by tools/oura_oauth.py (refreshed with OURA_CLIENT_ID/SECRET). Never logged."""
+        poll_s = float(self.opts.get("poll_s", 60))
+        lookback_s = float(self.opts.get("lookback_s", 6 * 3600))
+        last_ts = time.time() - lookback_s
+        fails = 0
+        while not self._stop.is_set():
+            try:
+                rows = oura_cloud_fetch(oura_cloud_token(), last_ts - 60)
+                new = [(ts, bpm, src) for ts, bpm, src in rows if ts > last_ts]
+                for ts, bpm, src in new:
+                    self._emit(ts, bpm)
+                if new:
+                    last_ts = new[-1][0]
+                    self._source = new[-1][2]
+                age = time.time() - last_ts
+                self._set(True, f"Oura cloud · last reading {fmt_age(age)} ago"
+                          + (f" ({self._source})" if getattr(self, "_source", None) else "")
+                          if new or self._n else "Oura cloud · connected, no readings yet (open the Oura app to sync)")
+                fails = 0
+            except OuraAuthError as e:
+                self._set(False, f"Oura cloud: {e}")
+                fails += 1
+            except Exception as e:
+                fails += 1
+                self._set(False, f"Oura cloud: {type(e).__name__}: {str(e)[:120]}")
+            if fails == 1:
+                print(f"[heart] {self._detail}", flush=True)
+            if self._stop.wait(poll_s if fails == 0 else min(300.0, poll_s * (2 ** min(fails, 3)))):
+                return
 
     # ---- replay -----------------------------------------------------------------------------
     def _run_replay(self):
@@ -707,3 +746,101 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
+
+# =====================================================================================
+# Oura cloud API v2 (proof of concept with the real ring: minutes of delay, no pairing)
+# =====================================================================================
+
+OURA_API = "https://api.ouraring.com"
+TOKEN_FILE = Path.home() / ".config" / "spidey" / "oura_token.json"
+
+
+class OuraAuthError(Exception):
+    pass
+
+
+def fmt_age(s: float) -> str:
+    s = max(0.0, s)
+    return f"{s:.0f} s" if s < 90 else f"{s / 60:.0f} min" if s < 5400 else f"{s / 3600:.1f} h"
+
+
+def oura_cloud_token(env_file: Path | None = None) -> str:
+    """Bearer token: OURA_TOKEN (env / repo .env), else the OAuth token file (refreshed when expired)."""
+    env = {**read_env_file(env_file or REPO / ".env"), **{k: v for k, v in os.environ.items() if k.startswith("OURA_")}}
+    if env.get("OURA_TOKEN"):
+        return env["OURA_TOKEN"].strip()
+    if not TOKEN_FILE.exists():
+        raise OuraAuthError("no token (set OURA_TOKEN in .env, or run tools/oura_oauth.py)")
+    tok = json.loads(TOKEN_FILE.read_text())
+    if tok.get("expires_at", 0) - time.time() > 120:
+        return tok["access_token"]
+    cid, sec = env.get("OURA_CLIENT_ID"), env.get("OURA_CLIENT_SECRET")
+    if not (cid and sec and tok.get("refresh_token")):
+        raise OuraAuthError("token expired and no OURA_CLIENT_ID/OURA_CLIENT_SECRET to refresh it")
+    new = oura_token_request({"grant_type": "refresh_token", "refresh_token": tok["refresh_token"],
+                              "client_id": cid, "client_secret": sec})
+    save_oura_token(new)
+    return new["access_token"]
+
+
+def oura_token_request(form: dict) -> dict:
+    import urllib.parse
+    import urllib.request
+    req = urllib.request.Request(f"{OURA_API}/oauth/token", data=urllib.parse.urlencode(form).encode(),
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def save_oura_token(tok: dict) -> None:
+    """Refresh tokens are single-use: always store the newest pair. 0600, outside the repo."""
+    tok = dict(tok)
+    tok["expires_at"] = time.time() + float(tok.get("expires_in", 86400))
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = TOKEN_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(tok))
+    os.chmod(tmp, 0o600)
+    tmp.replace(TOKEN_FILE)
+
+
+def parse_oura_heartrate(payload: dict) -> list[tuple[float, float, str]]:
+    """API v2 heartrate JSON -> [(unix ts, bpm, source)] sorted by time."""
+    from datetime import datetime
+    out = []
+    for row in (payload or {}).get("data") or []:
+        try:
+            ts = datetime.fromisoformat(str(row["timestamp"]).replace("Z", "+00:00")).timestamp()
+            out.append((ts, float(row["bpm"]), str(row.get("source") or "")))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(out)
+
+
+def oura_cloud_fetch(token: str, since_ts: float, until_ts: float | None = None) -> list[tuple[float, float, str]]:
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    from datetime import datetime, timezone
+
+    def iso(t):
+        return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    q = {"start_datetime": iso(since_ts), "end_datetime": iso(until_ts or time.time() + 60)}
+    rows, nxt = [], None
+    for _ in range(10):                                   # pagination via next_token
+        if nxt:
+            q["next_token"] = nxt
+        req = urllib.request.Request(f"{OURA_API}/v2/usercollection/heartrate?{urllib.parse.urlencode(q)}",
+                                     headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                payload = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                raise OuraAuthError(f"HTTP {e.code} (token invalid/expired, or no heartrate scope / membership)")
+            raise
+        rows += parse_oura_heartrate(payload)
+        nxt = payload.get("next_token")
+        if not nxt:
+            break
+    return sorted(set(rows))

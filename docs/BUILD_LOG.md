@@ -566,3 +566,6 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 - "Something in my way": only_while_walking on. Attack trigger unchanged.
 - Tests: test_motion (9, synthetic walking 80-150 spm / still / nod / vibration / turning / stall), test_walk_ttc_rules (6). 65/65 pass; world sim A B C D1 D2 all OK, 0 false alarms. Not yet verified on the real IMU (glasses not connected).
 - App (v3.4): "Only while I'm walking" switch in the wizard When step + review/edit + technical editor; Debug Neon card shows walking/steps per min/turning; `if` dict now round-trips unknown keys (RuleCondition.extra + preserving()). docs/protocol.md v3.4. Simulator build OK; not yet installed (phone not connected).
+
+## 2026-10-11 · Oura cloud heart rate (proof of concept with the real ring)
+- No charger, no re-pairing: new heart backend `oura_cloud` polls Oura API v2 /v2/usercollection/heartrate every 60 s (ring -> phone app -> cloud: minutes of delay, ~5-min spacing). Token: OURA_TOKEN (personal access token) in .env, or OAuth via tools/oura_oauth.py (token 0600 in ~/.config/spidey, single-use refresh tokens stored each time). Baseline for cloud = 1 h median (window_s 3600). Card: connected = API reachable; detail "last reading N min ago (awake)". Tests: test_oura_cloud (5, HTTP mocked).
