@@ -15,10 +15,10 @@ detector:
   model: claude-haiku-5-5
   max_side: 512               # the picture/video panel is ~1/4 of the scene camera's width: 384 px is too small
   jpeg_quality: 70
-  concurrency: 3              # calls in flight (temporal calls carry 3 images and take ~1.5 s)
+  concurrency: 5              # calls in flight: overlapping calls hedge against slow network tails
   stream: true
   max_tokens: 200
-  min_interval_s: 0.4
+  min_interval_s: 0.25        # a fresh frame every 0.25 s
   env_file: ../../.env
   treat_screens_as_real: true   # desk: the lion on the monitor counts as a real lion (prompt addendum)
 

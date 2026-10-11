@@ -43,6 +43,55 @@ class FakeDetector(Detector):
                          urgency=self.urgency, raw={"t": round(t, 2)})
 
 
+
+def norm_triggers(raw) -> dict:
+    """The model's triggers object -> {id: {match, urgency, where, seen_by_user, reason, bbox...}}."""
+    triggers = {}
+    for tid, t in (raw or {}).items():
+        if isinstance(t, dict):
+            try:
+                tu = max(0.0, min(1.0, float(t.get("urgency") or 0)))
+            except (TypeError, ValueError):
+                tu = 0.0
+            out = {"match": bool(t.get("match")), "urgency": tu,
+                   "where": where_from_x(t.get("x")), "seen_by_user": bool(t.get("seen_by_user")),
+                   "reason": str(t.get("reason") or "")[:200]}
+            for k in ("bbox", "subject_bbox", "target_bbox", "ordinal", "touching"):
+                if k in t:
+                    out[k] = t[k]
+            triggers[str(tid)] = out
+    return triggers
+
+
+def closed_object(text: str, key: str) -> str | None:
+    """The complete JSON object value of `key` in a partial JSON stream, once its closing brace has arrived."""
+    k = text.find(f'"{key}"')
+    if k < 0:
+        return None
+    i = text.find("{", k)
+    if i < 0:
+        return None
+    depth, in_str, esc = 0, False, False
+    for j in range(i, len(text)):
+        c = text[j]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[i:j + 1]
+    return None
+
 class VLMDetector(Detector):
     """Claude Haiku judges each frame (gaze drawn as a red dot): hazards + the user's custom triggers,
     all in ONE call per tick.
@@ -117,6 +166,51 @@ class VLMDetector(Detector):
         "touches or enters the target now."
     )
 
+    SYSTEM_V4 = (   # v4: v1 order (scene reason first helps judgement), both reasons <= 8 words
+        "You are a 'spidey sense' for the person wearing a head-mounted camera. The red dot in each image "
+        "is where they are looking. Reply with strict JSON only, no prose, keys in exactly this order: "
+        '{"hazard": string|null, "urgency": number 0-1, "x": number 0-1, "seen_by_user": bool, '
+        '"reason": string, "triggers": {...}}. '
+        "hazard: something dangerous (moving toward them, obstacle, vehicle, sharp object), else null with "
+        "urgency 0. x: horizontal centre of the hazard (0 left edge, 1 right edge). seen_by_user: the red "
+        "dot is on or near it. reason: at most 8 words. "
+        'triggers: for each custom trigger id listed by the user, {"match": bool, "urgency": 0-1, '
+        '"x": 0-1, "seen_by_user": bool, "bbox": [x0, y0, x1, y1], "reason": string}; bbox = tight box around '
+        "the matching thing, as fractions 0-1 of the image width/height (origin top-left); reason at most 8 words. "
+        "For a trigger that "
+        'does not match return only {"match": false}. match only if the image clearly shows what the trigger '
+        "describes. If there are no custom triggers, triggers is {}. "
+        "Several images labelled t-1.4s, t-0.7s, now are consecutive frames from the same camera, oldest "
+        "first: judge the newest ('now'); every x and box refers to it; use the earlier ones only for change "
+        "over time. For a trigger marked (temporal), whenever its subject and the target it moves relative to "
+        'are visible (even if match is false), use {"match": bool, "urgency": 0-1, "subject_bbox": [..], '
+        '"target_bbox": [..], "ordinal": "closer"|"same"|"farther", "touching": bool, "reason": string}: '
+        "ordinal = is the subject closer to the target now than in the earlier frames; touching = subject "
+        "touches or enters the target now."
+    )
+
+    SYSTEM_V3 = (    # v3 (default): v1 wording, triggers FIRST + short reasons so the verdict streams in ~1 s
+        "You are a 'spidey sense' for the person wearing a head-mounted camera. The red dot in each image "
+        "is where they are looking (no red dot: every seen_by_user is false). Reply with strict JSON only, no "
+        "prose, keys in exactly this order: "
+        '{"triggers": {...}, "hazard": string|null, "urgency": number 0-1, "x": number 0-1, "seen_by_user": bool}. '
+        'triggers: for each custom trigger id listed by the user, {"match": bool, "urgency": 0-1, '
+        '"bbox": [x0, y0, x1, y1], "x": 0-1, "seen_by_user": bool, "reason": string}; bbox = tight box around '
+        "the matching thing, as fractions 0-1 of the image width/height (origin top-left); reason: at most 8 "
+        'words. For a trigger that does not match return only {"match": false}. match only if the image clearly '
+        "shows what the trigger describes. If there are no custom triggers, triggers is {}. "
+        "hazard: something dangerous (moving toward them, obstacle, vehicle, sharp object), else null with "
+        "urgency 0. x: horizontal centre of the hazard (0 left edge, 1 right edge). seen_by_user: the red "
+        "dot is on or near it. "
+        "Several images labelled t-1.4s, t-0.7s, now are consecutive frames from the same camera, oldest "
+        "first: judge the newest ('now'); every x and box refers to it; use the earlier ones only for change "
+        "over time. For a trigger marked (temporal), whenever its subject and the target it moves relative to "
+        'are visible (even if match is false), use {"match": bool, "urgency": 0-1, "subject_bbox": [..], '
+        '"target_bbox": [..], "ordinal": "closer"|"same"|"farther", "touching": bool, "reason": string}: '
+        "ordinal = is the subject closer to the target now than in the earlier frames; touching = subject "
+        "touches or enters the target now."
+    )
+
     SCREENS_AS_REAL = (
         " This is a desk simulation of the real world: treat anything shown on a screen, monitor or picture as if it "
         "were physically in front of the wearer at that position. Do not discount hazards or triggers for being an "
@@ -147,7 +241,7 @@ class VLMDetector(Detector):
         self.max_tokens, self.min_interval_s = max_tokens, min_interval_s
         self.concurrency, self.stream, self.cache = max(1, concurrency), stream, cache
         # desk tests: on-screen content counts as real (appended to the system prompt; JSON key order unchanged)
-        self.system_text = (self.SYSTEM_V1 if prompt == "v1" else self.SYSTEM) + (self.SCREENS_AS_REAL if treat_screens_as_real else "")
+        self.system_text = {"v1": self.SYSTEM_V1, "v2": self.SYSTEM, "v4": self.SYSTEM_V4}.get(prompt, self.SYSTEM_V3) + (self.SCREENS_AS_REAL if treat_screens_as_real else "")
         self.triggers: list[tuple[str, str, bool]] = []   # (id, description, temporal), set by the engine
         self._ring: list[tuple[float, Frame]] = []    # (ts, downscaled frame) for temporal triggers
         self._pool = ThreadPoolExecutor(max_workers=self.concurrency)
@@ -260,12 +354,28 @@ class VLMDetector(Detector):
         kwargs = dict(model=self.model, max_tokens=self.max_tokens + 90 * len(trig) + 40 * n_temporal,
                       thinking={"type": "disabled"} if "haiku" in self.model else {"type": "between_tools"}, output_config={"effort": "low"},
                       system=self.system_blocks(), messages=[{"role": "user", "content": content}])
-        early_ms = None
+        early_ms = partial_ms = None
         if self.stream:
             text = ""
             with self.client.messages.stream(**kwargs) as st:
                 for chunk in st.text_stream:
                     text += chunk
+                    if trig and partial_ms is None and '"triggers"' in text:
+                        blk = closed_object(text, "triggers")
+                        if blk is not None:
+                            try:
+                                tj = json.loads(blk)
+                            except ValueError:
+                                tj = None
+                            if isinstance(tj, dict):
+                                partial_ms = (time.perf_counter() - t0) * 1000
+                                if tr is not None:
+                                    tr["t_full"] = time.time()
+                                self._deliver(Detection(
+                                    None, None, False, 0.0, partial_ms,
+                                    {"frame_ts": frame.ts, "call_id": call_id, "gaze": frame.gaze_xy, "text": text,
+                                     "partial": True, "n_triggers": len(trig), "n_images": len(history)},
+                                    triggers=norm_triggers(tj), frame=frame, trace=tr), frame.ts, 1)
                     if early_ms is None:
                         m = self._EARLY.search(text)
                         if m:
@@ -279,7 +389,7 @@ class VLMDetector(Detector):
                                 u if hz else 0.0, early_ms,
                                 {"frame_ts": frame.ts, "gaze": frame.gaze_xy, "early": True, "call_id": call_id},
                                 frame=frame),
-                                frame.ts, 0)
+                                frame.ts, 0, force=partial_ms is not None)
                 resp = st.get_final_message()
         else:
             resp = self.client.messages.create(**kwargs)
@@ -300,26 +410,18 @@ class VLMDetector(Detector):
         except (TypeError, ValueError):
             urgency = 0.0
         where = (where_from_x(data.get("x")) or data.get("where")) if hazard else None
-        triggers = {}
-        for tid, t in (data.get("triggers") or {}).items():
-            if isinstance(t, dict):
-                try:
-                    tu = max(0.0, min(1.0, float(t.get("urgency") or 0)))
-                except (TypeError, ValueError):
-                    tu = 0.0
-                out = {"match": bool(t.get("match")), "urgency": tu,
-                       "where": where_from_x(t.get("x")), "seen_by_user": bool(t.get("seen_by_user")),
-                       "reason": str(t.get("reason") or "")[:200]}
-                for k in ("bbox", "subject_bbox", "target_bbox", "ordinal", "touching"):
-                    if k in t:
-                        out[k] = t[k]
-                triggers[str(tid)] = out
+        triggers = norm_triggers(data.get("triggers"))
+        if partial_ms is not None:
+            return None     # the triggers were already delivered mid-stream (and the hazard as an early result)
         return Detection(hazard, where, bool(data.get("seen_by_user")), urgency if hazard else 0.0, latency, raw,
                          reason=str(data.get("reason") or "")[:200], triggers=triggers, frame=frame, trace=tr)
 
     # ---- scheduling ---------------------------------------------------------------------
-    def _deliver(self, det: Detection, frame_ts: float, stage: int) -> None:
+    def _deliver(self, det: Detection, frame_ts: float, stage: int, force: bool = False) -> None:
         with self._lock:
+            if force:
+                self._results.append(det)
+                return
             # stale = an older frame finished after a newer one. Full results are only compared with full ones
             # (a newer call's early fields often arrive before an older call's full reply, which still carries
             # the custom triggers); an early result is stale if any newer result of either stage was delivered.
@@ -359,7 +461,8 @@ class VLMDetector(Detector):
         finally:
             with self._lock:
                 self._in_flight -= 1
-        self._deliver(det, frame.ts, 1)
+        if det is not None:
+            self._deliver(det, frame.ts, 1)
 
     def analyze(self, frame: Frame) -> Detection | None:
         now = time.time()
