@@ -143,3 +143,80 @@ built-ins the overall scene reason). `rule`/`reason` are kept for compatibility.
 App -> server additions:
 - `rules.upsert` / `rules.delete` (unchanged), and the toggle = upsert with `enabled` flipped. The engine persists to triggers.json and broadcasts `rules.list`.
 - `rules.reset` `{}`: restore the default triggers (blindspot + heads_up); replies `rules.list`.
+
+## v3: gaze modes, temporal triggers, radar, thumbnails, pause (added 18:15)
+
+Trigger additions:
+```jsonc
+{
+  "gaze_mode": "unseen",        // "unseen" (fire only if NOT looked at recently) | "looking_at" (fire only while looking at it) | "any"
+                                //   back-compat: if missing, if.unseen=true => "unseen", else "any"
+  "notice_memory_s": 3,         // unseen: once looked at, stay quiet this long after gaze leaves it
+  "temporal": false,            // true: Haiku gets the last 3 frames (~0.7 s apart) tiled into one image, oldest left -> newest right,
+                                //   so the description can refer to change over time ("getting closer to the water")
+  "source": "neon",             // "neon" (camera + gaze) | "radar"
+  "if": {"min_urgency": 0.5,
+         "max_distance_m": 2.0, "min_speed_mps": 0.3}   // radar triggers only
+}
+```
+**"Seen" comes from real gaze, not the red dot.** For custom camera triggers Haiku also returns the object's
+`bbox: [x0, y0, x1, y1]` (0..1 of the newest frame). The engine keeps ~5 s of gaze history and computes
+`looked_at_s_ago`: when the gaze point last fell inside the bbox (with ~4% margin). `looking_at` = within 0.6 s;
+`unseen` = not within `notice_memory_s`. Built-in triggers keep using Haiku's seen_by_user.
+
+Radar triggers come from the radar server (`ws://localhost:8090`, owned by `~/Downloads/radar-lab/server.py`):
+a confirmed "approaching" target within `max_distance_m` and faster than `min_speed_mps` fires; radar targets count as
+unseen by definition.
+
+Event additions:
+- `sensor`: "camera" | "radar"
+- `thumb`: base64 JPEG (~240 px wide) of the frame that fired, with the gaze dot and the bbox drawn (camera only)
+- `radar`: `{distance_m, speed_mps, angle_deg, side: "left"|"right"|"center"}` (radar only)
+- `gaze_mode`, `looked_at_s_ago` (camera custom triggers)
+
+Server -> app: `status` (on connect, every 2 s, and on change):
+```jsonc
+{"type": "status", "paused": false,
+ "source": {"type": "neon"|"fake", "live": true, "fps": 16.2, "gaze_hz": 130, "worn": true, "battery": 13, "delay_ms": 140},
+ "radar": {"connected": true, "url": "ws://localhost:8090", "mode": "board"|"sim", "last": {...}, "rate_hz": 10} | null,
+ "about": {"config": "config.neon.yaml", "model": "claude-haiku-5-5", "commit": "bbee782", "sink": "datafeel-ble"}}
+```
+`device.status` gains a `radar` card; the `neon` card gets the fps / gaze Hz / worn / battery / delay detail.
+
+App -> server: `command` `pause` `{on: bool}`: while paused, detection keeps running for the Log, but nothing reaches the Dot
+(events are flagged `paused: true`).
+
+### v3.1: temporal triggers use multiple images + a trend layer (supersedes "tiled" above)
+- Temporal triggers send the last 3 frames (~0.7 s apart) as **3 images in the same request**, each preceded by a label
+  `t-1.4s` / `t-0.7s` / `now`; still one Haiku call per tick.
+- For each temporal trigger Haiku also returns a numeric `progress` (the subject's estimated distance to the target in metres,
+  or a 0..1 closeness if distance isn't estimable; field `progress_unit: "m" | "closeness"`) and the subject's `bbox` in the newest frame.
+- The engine keeps a per-trigger rolling history (track identity by bbox IoU ≥ 0.2; reset on a big jump), smooths it (median of 3), and fires
+  only when the trend is consistent: moving toward the target for ≥ `trend.ticks` consecutive ticks (default 3) **and** past
+  `trend.threshold` (default 1.5 m, or 0.7 closeness), with hysteresis (re-arm only after moving 30% back away) + cooldown.
+  The same history mechanism holds the gaze "noticed" memory.
+- Trigger field: `"trend": {"threshold": 1.5, "ticks": 3}` (temporal triggers only; editable in the app).
+- Event field: `"trend": {"values": [4.0, 2.5, 1.2], "unit": "m"}`. The app's Log shows "4.0 → 2.5 → 1.2 m".
+
+### v3.2: trend values are RELATIVE only (supersedes metres in v3.1; per Jaidev)
+No absolute distances from the camera. For each temporal trigger Haiku returns `gap`: the image-space gap between the
+subject and the target (e.g. person bbox ↔ water edge), as a fraction of image width (0 = touching, 1 = across the frame),
+plus the subject `bbox`. The engine's memory only keeps measurable, relative quantities: `gap` per tick, its change, and bbox
+size (growth = approaching the camera). It fires when the gap shrinks for ≥ `trend.ticks` ticks and the latest gap
+≤ `trend.threshold` (fraction of the width, default 0.10), and the total shrink is ≥ 30% of the starting gap.
+- Trigger field: `"trend": {"threshold": 0.10, "ticks": 3}` (threshold = gap as a fraction of the frame width).
+- Event field: `"trend": {"values": [0.42, 0.25, 0.08], "unit": "gap"}`. The app shows "gap 42% → 25% → 8%".
+Radar keeps metres (the sensor measures range directly).
+
+### v3.3: final temporal signals (supersedes v3.1/v3.2 numbers)
+Per temporal trigger Haiku returns (one call, 3 labelled frames): `subject_bbox`, `target_bbox` (newest frame),
+`ordinal: "closer"|"same"|"farther"` (subject vs target compared with the earlier frames), and `touching: bool`.
+The engine computes only relative, scale-free signals:
+- `gap` = image-space distance between the subject and target boxes ÷ the subject box height ("body-heights"), and its change per tick
+- `loom` = subject box area ÷ previous tick's area (> 1 = approaching the wearer)
+- the ordinal history
+It fires on a consistent trend: the gap shrinks for ≥ `ticks` ticks (by more than the sensitivity), OR `ordinal == "closer"` for ≥ `ticks`
+ticks, OR `touching`, with hysteresis + cooldown.
+- Trigger field: `"trend": {"ticks": 3, "sensitivity": "low"|"medium"|"high"}` (high = smaller changes count; default medium).
+- Event field: `"trend": {"gap": [0.8, 0.4, 0.1], "ordinal": ["closer", "closer", "closer"], "touching": false, "loom": 1.3}`.
+  The app shows "gap 0.8 → 0.4 → 0.1 body-heights · closer ×3".

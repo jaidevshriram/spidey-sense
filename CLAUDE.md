@@ -9,3 +9,6 @@
 - Never commit or print secrets. The API key lives only in the repo-root `.env` (gitignored).
 - Bluetooth (El Jefe "DataFeelCE") must run from Terminal.app; only one process can hold the BLE link.
 - Don't buzz/heat the Dot without the user's OK; thermal must respect the 40 °C cap / 30 s auto-off.
+- **Commit and push regularly**: after every piece lands and at least every ~20 minutes, including parallel WIP (keep `main`
+  runnable; use a branch for broken WIP, then merge). Each push also updates README.md, docs/BUILD_LOG.md and docs/STATUS.md
+  (one page: what works + commit, in progress, known issues, how to run each test, TBD numbers).

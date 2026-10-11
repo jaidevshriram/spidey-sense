@@ -36,7 +36,7 @@ Every stage is swappable in `backend/configs/*.yaml` (`type: fake | neon`, `fake
 | `neon/` | `neon_app`: Pupil Labs Neon gaze + scene sources (Capture over USB, or Companion phone over Wi-Fi) |
 | `vlm/` | vision test scenes, latency report (detector code is `backend/spidey/detectors.py`) |
 | `ios/` | SwiftUI app: Log / Senses / Devices / Haptics / Settings (zero-config connect) |
-| `docs/` | `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped) |
+| `docs/` | `STATUS.md` (current state, one page), `protocol.md` (app ↔ engine WebSocket), `architecture.md`, `BUILD_LOG.md` (everything, timestamped), `deck/` (slides) |
 | `scripts/` | setup, API key, playground, Bluetooth test/latency |
 
 ## Quickstart
