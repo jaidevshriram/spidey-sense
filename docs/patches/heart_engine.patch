@@ -1,0 +1,163 @@
+--- a/backend/spidey/engine.py
++++ b/backend/spidey/engine.py
+@@ -16,6 +16,7 @@
+ import cv2
+ import yaml
+ 
++from . import heart as H
+ from . import rules as R
+ from .detectors import make_detector
+ from .server import EventServer
+@@ -95,6 +96,7 @@
+         self.source = None                   # set by run(): .stats() for the status message
+         self.memory = R.TriggerMemory()      # gaze history + per-trigger noticed/trend memory
+         self.radar = None                    # RadarSense when cfg radar.enabled
++        self.heart = None                    # HeartRateSense when cfg heart.enabled
+         self._frame_times: deque = deque()   # (ts, has_gaze) receive times, for fps / gaze Hz
+         self._ev_lock = threading.Lock()     # event ids + sink calls from the engine loop and the radar thread
+         self.n_events = 0
+@@ -202,8 +204,7 @@
+             {"id": "neon", "name": "Neon", "kind": "eye_tracker", "status": neon_status,
+              "detail": neon_detail, "last_seen": self.last_frame_ts, "stats": src},
+             radar_card,
+-            {"id": "oura", "name": "Oura", "kind": "heart_rate", "status": "coming_soon",
+-             "detail": "TODO: heart-rate source not built", "last_seen": None},
++            H.oura_card(self.heart_status()),
+         ]
+ 
+     def device_status(self) -> dict:
+@@ -306,7 +307,31 @@
+                             ev["thumb"] = thumb
+                     self.server.publish(ev)
+         return out
++
++    # ---- heart rate (Oura) -----------------------------------------------------------------
++    def start_heart(self) -> None:
++        self.heart = H.start_from_config(self.cfg, self.on_heart_sample)
++
++    def heart_status(self) -> dict | None:
++        if self.heart is None:
++            return None
++        try:
++            return self.heart.status()
++        except Exception as e:
++            return {"connected": False, "backend": None, "detail": f"{type(e).__name__}: {e}"}
+ 
++    def on_heart_sample(self, sample: dict) -> None:
++        """Called on the heart thread for every reading; evaluates source: heart_rate triggers."""
++        with self.lock:
++            rules = [r for r in self.rules if r.enabled and r.source == "heart_rate"]
++            events = R.apply_heart(rules, sample, time.time()) if rules else []
++        out = self.emit(events)
++        if out and self.radar_log is not None:
++            with self._log_lock:
++                self.radar_log.write(json.dumps({"ts": {"heart": sample.get("ts"), "sent": time.time()},
++                                                 "heart": sample, "events": out}) + "\n")
++                self.radar_log.flush()
++
+     # ---- radar ------------------------------------------------------------------------------
+     def start_radar(self) -> None:
+         rc = self.cfg.get("radar") or {}
+@@ -373,6 +398,7 @@
+         new = R.rule_from_dict(msg.get("rule") or {})
+         with self.lock:
+             last = {r.id: r._last for r in self.rules}   # keep each rule's cooldown clock
++            heart = {r.id: r._heart for r in self.rules}  # and heart triggers' armed / sustain state
+             dicts = [r.to_dict() for r in self.rules]
+             i = next((i for i, d in enumerate(dicts) if d["id"] == new.id), None)
+             if i is None:
+@@ -382,6 +408,7 @@
+             self.rules = R.load_rules(dicts) if dicts else []  # rebuild the Rule list (unique ids)
+             for r in self.rules:
+                 r._last = last.get(r.id, r._last)
++                r._heart = heart.get(r.id, r._heart)
+             self._rules_changed()
+         return {"type": "ack", "for": "rules.upsert", "ok": True, "id": new.id}
+ 
+@@ -531,6 +558,7 @@
+         with open(log_path, "a") as log:
+             ctl.radar_log = log
+             ctl.start_radar()
++            ctl.start_heart()
+             for frame in source.frames():
+                 ctl.note_frame(frame)
+                 ctl.memory.add_frame(frame)          # gaze history for looked_at_s_ago
+@@ -581,6 +609,11 @@
+         if ctl.radar is not None:
+             try:
+                 ctl.radar.close()
++            except Exception:
++                pass
++        if ctl.heart is not None:
++            try:
++                ctl.heart.close()
+             except Exception:
+                 pass
+         ctl.radar_log = None
+--- a/backend/spidey/rules.py
++++ b/backend/spidey/rules.py
+@@ -15,6 +15,7 @@
+ from collections import deque
+ from dataclasses import dataclass, field
+ 
++from . import heart as H
+ from .types import Detection, Frame, HapticEvent
+ 
+ # Sources a rule can listen to. "neon" (vision detections) and "radar" (RadarSense targets) are wired in.
+@@ -44,6 +45,7 @@
+     temporal: bool = False            # custom: judged over the last 3 frames, fires on a consistent trend
+     trend: dict = field(default_factory=dict)   # temporal: {ticks: 3, sensitivity: low|medium|high}
+     _last: float = field(default=-1e9, repr=False)
++    _heart: H.HeartState | None = field(default=None, repr=False)   # heart_rate: armed / sustain state
+ 
+     def __post_init__(self):
+         if not self.id:
+@@ -79,7 +81,7 @@
+         if not self.enabled:
+             return False
+         if self.source not in VISION_SOURCES:
+-            # radar: see check_radar(). TODO(stub): heart_rate / mac_metric / manual have no input stream yet;
++            # radar: check_radar(); heart_rate: check_heart(). TODO(stub): mac_metric / manual have no input stream yet;
+             # their conditions (hr_band_bpm, value_gt, ...) are stored and round-tripped only.
+             return False
+         c = self.if_
+@@ -127,6 +129,28 @@
+         return HapticEvent(self.feel, self.dot, text.replace("  ", " "), now, self.id,
+                            trigger_name=self.name, why=why, intensity=self.intensity, rgb=self.rgb,
+                            sensor="camera", extra=extra)
++
++    # ---- heart rate -----------------------------------------------------------------
++    def check_heart(self, sample: dict, now: float) -> HapticEvent | None:
++        """HeartRateSense sample {ts, bpm, bpm_smooth, median_bpm, baseline_ready} -> event. Fires when the
++        smoothed bpm is >= if.min_delta_bpm (15) or >= if.min_delta_pct % (20) over the rolling 2-min median for
++        >= if.sustain_s (8), once per excursion (re-arms below the threshold), not within cooldown_s.
++        The logic is spidey.heart.heart_step (pure, unit-tested); this keeps its state on the rule."""
++        if not self.enabled or self.source != "heart_rate":
++            return None
++        f = H.HeartTriggers.step_rule(self, sample, self._heart or H.HeartState())
++        if f is None:
++            return None
++        self._heart, fire = f
++        if fire is None:
++            return None
++        self._last = now
++        extra = {"heart": fire["heart"]}
++        lat = (now - fire["sample_ts"]) * 1000 if fire.get("sample_ts") else None
++        if lat is not None and 0 <= lat < 60_000:
++            extra["latency_ms"] = round(lat, 1)
++        return HapticEvent(self.feel, self.dot, fire["reason"], now, self.id, trigger_name=self.name,
++                           why=fire["why"], intensity=self.intensity, rgb=self.rgb, sensor="heart", extra=extra)
+ 
+     # ---- radar ----------------------------------------------------------------------
+     def check_radar(self, target: dict, now: float) -> HapticEvent | None:
+@@ -229,6 +253,10 @@
+ 
+ def apply_radar(rules: list[Rule], target: dict, now: float) -> list[HapticEvent]:
+     return [e for r in rules if r.enabled and r.source == "radar" and (e := r.check_radar(target, now))]
++
++
++def apply_heart(rules: list[Rule], sample: dict, now: float) -> list[HapticEvent]:
++    return [e for r in rules if r.enabled and r.source == "heart_rate" and (e := r.check_heart(sample, now))]
+ 
+ 
+ # =====================================================================================

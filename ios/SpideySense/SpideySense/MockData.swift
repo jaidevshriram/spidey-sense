@@ -7,8 +7,6 @@ enum MockData {
     static let presets: [SenseRule] = [
         SenseRule(id: "blindspot", name: "Blindspot", source: SenseSource.neon.rawValue, when: .any,
                   cond: RuleCondition(unseen: true, minUrgency: 0.6), feel: "urgent", dot: nil, cooldownS: 3),
-        SenseRule(id: "heartbeat_shift", name: "Heartbeat shift", source: SenseSource.heartRate.rawValue,
-                  cond: RuleCondition(hrBandBpm: 15, hrWindowS: 120), feel: "pulse", dot: nil, cooldownS: 30),
         SenseRule(id: "machine_alert", name: "Machine alert", source: SenseSource.macMetric.rawValue,
                   cond: RuleCondition(metric: "cpu_temp_c", valueGt: 90), feel: "ambient", dot: 2, cooldownS: 60),
     ]
@@ -27,8 +25,18 @@ enum MockData {
         var unwatched = custom("person_to_water_unwatched", "Person near water I'm not watching", water, feel: "urgent",
                                gaze: .unseen, noticeMemory: 3)
         unwatched.temporal = true; unwatched.trend = TrendConfig(ticks: 3, sensitivity: "medium")
-        return [bigCat, lion, toWater, unwatched, radar("someone_behind", "Someone behind me", feel: "urgent")]
+        return [bigCat, lion, toWater, unwatched, radar("someone_behind", "Someone behind me", feel: "urgent"),
+                heart("heart_racing", "Heart racing")]
     }()
+
+    /// Heart-rate trigger: HR above the rolling 2-min median by `bpm` or `pct` %, for `sustain` s.
+    static func heart(_ id: String, _ name: String, bpm: Double = 15, pct: Double = 20, sustain: Double = 8,
+                      feel: String = "pulse", cooldown: Double = 60) -> SenseRule {
+        SenseRule(id: id, name: name, source: SenseSource.heartRate.rawValue, when: .any,
+                  cond: RuleCondition(minDeltaBpm: bpm, minDeltaPct: pct, sustainS: sustain),
+                  feel: feel, dot: nil, cooldownS: cooldown, kind: "custom", describe: nil, intensity: 1,
+                  rgb: TriggerColor.defaultRGB(feel))
+    }
 
     static func custom(_ id: String, _ name: String, _ describe: String, feel: String, gaze: GazeMode = .unseen,
                        noticeMemory: Double? = nil, intensity: Double = 1, minUrgency: Double = 0.5,
@@ -57,13 +65,14 @@ enum MockData {
 
     static var rules: [SenseRule] {
         var r = presets.map { p -> SenseRule in var p = p; p.kind = "builtin"; return p }
-        r[2].enabled = false
+        r[1].enabled = false                       // machine_alert
         var lion = customTemplates[1]
         lion.intensity = 0.8
         r.insert(lion, at: 1)
         r.insert(customTemplates[3], at: 2)        // over time + unseen
         r.insert(customTemplates[0], at: 3)        // looking at it
         r.insert(customTemplates[4], at: 4)        // radar
+        r.insert(customTemplates[5], at: 5)        // heart rate
         return r
     }
 
@@ -79,8 +88,10 @@ enum MockData {
                        detail: "source: neon (realtime)", lastSeen: now - 1, source: status.source),
             DeviceInfo(id: "radar", name: "Radar", kind: "radar", status: "simulated",
                        detail: "radar-lab server (sim)", lastSeen: now - 0.4, radar: status.radar),
-            DeviceInfo(id: "oura", name: "Oura", kind: "heart_rate", status: "coming_soon",
-                       detail: "Heart-rate source coming soon", lastSeen: nil),
+            DeviceInfo(id: "oura", name: "Oura", kind: "heart_rate", status: "connected",
+                       detail: "open_oura · 72 bpm · 2-min median 70 · open_oura: live", lastSeen: now - 0.8,
+                       heart: HeartCard(backend: "open_oura", lastBpm: 72, medianBpm: 70, sinceLastS: 0.8,
+                                        rateHz: 1.2, connected: true)),
         ]
     }()
 
@@ -97,13 +108,14 @@ enum MockData {
             ("urgent", "bike", "left", false, 0.86, "blindspot", "Blindspot", 22,
              "Cyclist closing fast on your left, outside your gaze."),
             ("ambient", "person", "right", true, 0.35, "heads_up", "heads_up", 47, nil),
-            ("pulse", "heart rate", "", false, 0.5, "heartbeat_shift", "Heartbeat shift", 160, nil),
+            ("pulse", "", "", false, 0.5, "heart_racing", "Heart racing", 160,
+             "HR 104 bpm, +33 over your 2-min median 71 for 12 s"),
         ]
         return rows.enumerated().compactMap { i, r in
             var d: [String: Any] = [
                 "id": 900 + i, "ts": now - r.7, "pattern": r.0, "dot": NSNull(), "rule": r.5,
                 "trigger": r.5, "trigger_name": r.6,
-                "reason": r.5 == "heartbeat_shift" ? "heartbeat_shift: HR 94 bpm, 2-min median 74 ± 15"
+                "reason": r.5 == "heart_racing" ? "Heart racing: HR 104 bpm, +33 over your 2-min median 71 for 12 s"
                     : "\(r.5): \(r.1) \(r.2) \(r.3 ? "seen" : "unseen") u=\(String(format: "%.2f", r.4))",
                 "detection": ["hazard": r.1, "where": r.2.isEmpty ? NSNull() : r.2,
                               "seen_by_user": r.3, "urgency": r.4] as [String: Any],
@@ -124,6 +136,9 @@ enum MockData {
                 d["paused"] = true
             case "blindspot", "heads_up":
                 d["sensor"] = "camera"
+            case "heart_racing":
+                d["sensor"] = "heart"; d["latency_ms"] = 35; d.removeValue(forKey: "detection")
+                d["heart"] = ["bpm": 104, "median_bpm": 71, "delta_bpm": 33, "above_s": 12] as [String: Any]
             default: break
             }
             return HapticEvent(d)

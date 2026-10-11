@@ -48,6 +48,7 @@ source .venv/bin/activate
 python3 backend/run.py --config backend/configs/config.vlm.yaml --seconds 21   # Haiku on test scenes (console)
 python3 backend/run.py --config backend/configs/config.neon.yaml          # real Neon + Haiku (console)
 cd backend && ../.venv/bin/python -m unittest tests.test_radar_client -v  # radar client tests
+cd backend && ../.venv/bin/python -m unittest tests.test_heart -v         # heart-rate sense (replay/fake, fake open_oura CLI)
 ```
 Desk tests A–E: see README "Desk tests" (page `./scripts/desk_test.sh`, engine `./scripts/engine_ble.sh --config backend/configs/config.desk.yaml`).
 

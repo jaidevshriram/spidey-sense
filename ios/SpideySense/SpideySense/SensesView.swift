@@ -13,6 +13,7 @@ enum RuleText {
     static func cond(_ r: SenseRule) -> String {
         let c = r.cond
         var parts: [String] = []
+        if r.isHeart { return heart(r) }
         if let b = c.hrBandBpm {
             let w = Int((c.hrWindowS ?? 120) / 60)
             parts.append("HR outside \(w)-min median ± \(Int(b)) bpm")
@@ -24,6 +25,11 @@ enum RuleText {
         if let m = c.maxUrgency { parts.append("urgency ≤ \(fmt(m))") }
         if parts.isEmpty { return r.senseSource == .manual ? "tapped" : "any \(r.when.label)" }
         return parts.joined(separator: ", ")
+    }
+
+    /// "HR ≥ 2-min median +15 bpm or +20% for 8 s"
+    static func heart(_ r: SenseRule) -> String {
+        "HR ≥ 2-min median +\(fmt(r.heartDeltaBpm)) bpm or +\(fmt(r.heartDeltaPct))% for \(fmt(r.heartSustainS)) s"
     }
 
     static func feel(_ r: SenseRule) -> String {
@@ -180,7 +186,7 @@ struct SenseRow: View {
 
     private var details: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: rule.isRadar ? "dot.radiowaves.right"
+            Image(systemName: rule.isRadar ? "dot.radiowaves.right" : rule.isHeart ? "heart.fill"
                   : rule.isCustom ? "text.bubble" : (rule.senseSource?.icon ?? "questionmark"))
                 .font(.title3).foregroundStyle(patternColor(rule.feel)).frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
@@ -197,6 +203,8 @@ struct SenseRow: View {
                     if rule.isRadar {
                         Text("Radar: someone approaching, within \(RuleText.fmt(rule.cond.maxDistanceM ?? 2)) m")
                             .font(.subheadline)
+                    } else if rule.isHeart {
+                        Text("Heart rate: \(RuleText.heart(rule))").font(.subheadline)
                     } else {
                         Text(rule.describe ?? "")
                             .font(.subheadline).lineLimit(2).truncationMode(.tail)
@@ -242,6 +250,9 @@ struct TriggerBadges: View {
             if rule.isRadar {
                 badge("📡 ≤\(RuleText.fmt(rule.cond.maxDistanceM ?? 2)) m · ≥\(RuleText.fmt(rule.cond.minSpeedMps ?? 0.3)) m/s",
                       .teal)
+            } else if rule.isHeart {
+                badge("♥︎ +\(RuleText.fmt(rule.heartDeltaBpm)) bpm / +\(RuleText.fmt(rule.heartDeltaPct))% · \(RuleText.fmt(rule.heartSustainS)) s",
+                      .pink)
             } else {
                 let g = rule.effectiveGazeMode
                 badge("👁 \(g.short)" + (g == .unseen ? " \(RuleText.fmt(rule.noticeMemoryS ?? 3))s" : ""), .blue)
@@ -316,6 +327,10 @@ struct SenseBuilder: View {
     @State private var sensitivity = "medium"
     @State private var maxDistance = 2.0
     @State private var minSpeed = 0.3
+    // heart rate (Oura)
+    @State private var hrDelta = 15.0
+    @State private var hrPct = 20.0
+    @State private var hrSustain = 8.0
     // Haptic action (both kinds)
     @State private var feel: FeelKind = .urgent
     @State private var customFeel = ""
@@ -332,7 +347,8 @@ struct SenseBuilder: View {
     private var effectiveName: String { trimmedName.isEmpty ? Self.suggestName(from: trimmedDescribe) : trimmedName }
     private var canSave: Bool {
         !(feel == .custom && feelKey.isEmpty)
-            && (isCustom ? (sensor == .radar ? !trimmedName.isEmpty : !trimmedDescribe.isEmpty && !effectiveName.isEmpty)
+            && (isCustom ? (sensor == .radar || sensor == .heartRate ? !trimmedName.isEmpty
+                                                                     : !trimmedDescribe.isEmpty && !effectiveName.isEmpty)
                          : !trimmedName.isEmpty)
     }
 
@@ -367,6 +383,10 @@ struct SenseBuilder: View {
             .onChange(of: feel) { _, f in
                 if !ledTouched { led = TriggerColor.color(TriggerColor.defaultRGB(f.rawValue)) }
             }
+            .onChange(of: sensor) { _, s in   // heart cooldowns live on a minutes scale, camera/radar on seconds
+                if s == .heartRate && cooldown < 10 { cooldown = 60 }
+                if s != .heartRate && cooldown > 60 { cooldown = 5 }
+            }
         }
     }
 
@@ -378,7 +398,7 @@ struct SenseBuilder: View {
                 HStack {
                     ForEach(MockData.customTemplates) { t in
                         Button { load(t, asTemplate: true) } label: {
-                            Label(t.name, systemImage: t.isRadar ? "dot.radiowaves.right" : "text.bubble")
+                            Label(t.name, systemImage: t.isRadar ? "dot.radiowaves.right" : t.isHeart ? "heart.fill" : "text.bubble")
                         }
                             .buttonStyle(.bordered).tint(.purple)
                     }
@@ -398,7 +418,7 @@ struct SenseBuilder: View {
         } header: {
             Text("Quick start")
         } footer: {
-            Text("Plain-English camera triggers are judged by Haiku on the Mac, in the same call that spots hazards. Radar triggers fire on the radar's approaching targets.")
+            Text("Plain-English camera triggers are judged by Haiku on the Mac, in the same call that spots hazards. Radar triggers fire on the radar's approaching targets; heart-rate triggers on your Oura ring's live heart rate.")
         }
     }
 
@@ -407,13 +427,21 @@ struct SenseBuilder: View {
             Picker("Sensor", selection: $sensor) {
                 Label("Camera", systemImage: "camera.fill").tag(SenseSource.neon)
                 Label("Radar", systemImage: "dot.radiowaves.right").tag(SenseSource.radar)
+                Label("Heart rate", systemImage: "heart.fill").tag(SenseSource.heartRate)
             }
             .pickerStyle(.segmented)
         } header: { Text("Sensor") } footer: {
-            Text(sensor == .radar ? "Radar watches behind and beside you. Radar targets always count as \"haven't looked at it\"."
-                                  : "Camera = the Neon's scene camera plus where you're looking.")
+            switch sensor {
+            case .radar: Text("Radar watches behind and beside you. Radar targets always count as \"haven't looked at it\".")
+            case .heartRate: Text("Heart rate = your Oura ring's live heart rate (via open_oura on the Mac).")
+            default: Text("Camera = the Neon's scene camera plus where you're looking.")
+            }
         }
-        if sensor == .radar { radarSections } else { cameraSections }
+        switch sensor {
+        case .radar: radarSections
+        case .heartRate: heartSections
+        default: cameraSections
+        }
     }
 
     @ViewBuilder private var cameraSections: some View {
@@ -485,6 +513,17 @@ struct SenseBuilder: View {
         }
     }
 
+    @ViewBuilder private var heartSections: some View {
+        Section {
+            Stepper("Above my 2-min median by \(Int(hrDelta)) bpm", value: $hrDelta, in: 5...40, step: 1)
+            Stepper("or by \(Int(hrPct))%", value: $hrPct, in: 5...50, step: 1)
+            Stepper("For at least \(Int(hrSustain)) s", value: $hrSustain, in: 3...30, step: 1)
+            Stepper("Cooldown \(RuleText.fmt(cooldown)) s", value: $cooldown, in: 10...600, step: 10)
+        } header: { Text("Heart rate") } footer: {
+            Text("Fires when your heart rate stays above your rolling 2-minute median by that many bpm or that percentage (whichever comes first) for that long. Fires once per spike; it re-arms after your heart rate drops back.")
+        }
+    }
+
     @ViewBuilder private var builtinSections: some View {
         Section("When") {
             Picker("Source", selection: $source) {
@@ -501,7 +540,9 @@ struct SenseBuilder: View {
         }
         Section("If") {
             Picker("Condition", selection: $cond) {
-                ForEach(CondKind.allCases) { Text($0.label).tag($0) }
+                ForEach(CondKind.allCases.filter { $0 != .hrOutsideMedian || cond == .hrOutsideMedian }) {
+                    Text($0.label).tag($0)
+                }
             }
             switch cond {
             case .hazardUnseen, .urgencyAtLeast:
@@ -563,8 +604,12 @@ struct SenseBuilder: View {
         else if c.minUrgency != nil { cond = .urgencyAtLeast; urgency = c.minUrgency ?? 0.6 }
         else { cond = .always }
         minUrgency = c.minUrgency ?? 0.5
-        sensor = r.isRadar ? .radar : .neon
-        if r.isRadar { source = .neon }   // the built-in picker has no radar
+        sensor = r.isRadar ? .radar : r.isHeart ? .heartRate : .neon
+        if r.isRadar || r.isHeart { source = .neon }   // the built-in picker has neither
+        if r.isHeart { isCustom = true }               // heart rules (even old built-in ones) use the heart editor
+        hrDelta = min(max(r.heartDeltaBpm, 5), 40)
+        hrPct = min(max(r.heartDeltaPct, 5), 50)
+        hrSustain = min(max(r.heartSustainS, 3), 30)
         gaze = r.effectiveGazeMode
         noticeMemory = min(max(r.noticeMemoryS ?? 3, 1), 10)
         temporal = r.isTemporal
@@ -578,7 +623,7 @@ struct SenseBuilder: View {
         led = TriggerColor.color(r.rgb ?? TriggerColor.defaultRGB(r.feel))
         ledTouched = r.rgb != nil && r.rgb != TriggerColor.defaultRGB(r.feel)
         dot = r.dot ?? 0
-        cooldown = r.isCustom ? min(max(r.cooldownS, 1), 60) : r.cooldownS
+        cooldown = r.isHeart ? min(max(r.cooldownS, 10), 600) : r.isCustom ? min(max(r.cooldownS, 1), 60) : r.cooldownS
         enabled = asTemplate ? true : r.enabled
     }
 
@@ -590,6 +635,12 @@ struct SenseBuilder: View {
             while existingIDs.contains(id) { id = "\(base)_\(n)"; n += 1 }
         }
         let rgb = TriggerColor.rgb(led)
+        if isCustom && sensor == .heartRate {
+            let c = RuleCondition(minDeltaBpm: hrDelta, minDeltaPct: hrPct, sustainS: hrSustain)
+            return SenseRule(id: id, name: finalName, enabled: enabled, source: SenseSource.heartRate.rawValue,
+                             when: .any, cond: c, feel: feelKey, dot: dot == 0 ? nil : dot, cooldownS: cooldown,
+                             kind: "custom", describe: nil, intensity: (intensity * 100).rounded() / 100, rgb: rgb)
+        }
         if isCustom {
             var c = RuleCondition()
             let radar = sensor == .radar

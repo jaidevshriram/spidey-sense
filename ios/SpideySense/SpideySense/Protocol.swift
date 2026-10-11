@@ -52,20 +52,26 @@ struct RuleCondition: Codable, Hashable {
     var valueGt: Double?        // fire when metric > this
     var maxDistanceM: Double?   // radar: target within this many metres
     var minSpeedMps: Double?    // radar: approaching faster than this
+    var minDeltaBpm: Double?    // heart_rate: bpm >= 2-min median + this ...
+    var minDeltaPct: Double?    // ... or >= median * (1 + this %)
+    var sustainS: Double?       // heart_rate: for at least this many seconds
 
     enum CodingKeys: String, CodingKey {
         case unseen, seen, metric
         case minUrgency = "min_urgency", maxUrgency = "max_urgency"
         case hrBandBpm = "hr_band_bpm", hrWindowS = "hr_window_s", valueGt = "value_gt"
         case maxDistanceM = "max_distance_m", minSpeedMps = "min_speed_mps"
+        case minDeltaBpm = "min_delta_bpm", minDeltaPct = "min_delta_pct", sustainS = "sustain_s"
     }
 
     init(unseen: Bool? = nil, seen: Bool? = nil, minUrgency: Double? = nil, maxUrgency: Double? = nil,
          hrBandBpm: Double? = nil, hrWindowS: Double? = nil, metric: String? = nil, valueGt: Double? = nil,
-         maxDistanceM: Double? = nil, minSpeedMps: Double? = nil) {
+         maxDistanceM: Double? = nil, minSpeedMps: Double? = nil,
+         minDeltaBpm: Double? = nil, minDeltaPct: Double? = nil, sustainS: Double? = nil) {
         self.unseen = unseen; self.seen = seen; self.minUrgency = minUrgency; self.maxUrgency = maxUrgency
         self.hrBandBpm = hrBandBpm; self.hrWindowS = hrWindowS; self.metric = metric; self.valueGt = valueGt
         self.maxDistanceM = maxDistanceM; self.minSpeedMps = minSpeedMps
+        self.minDeltaBpm = minDeltaBpm; self.minDeltaPct = minDeltaPct; self.sustainS = sustainS
     }
 
     init(from decoder: Decoder) throws {
@@ -75,6 +81,8 @@ struct RuleCondition: Codable, Hashable {
         hrBandBpm = c.lenient(Double.self, .hrBandBpm); hrWindowS = c.lenient(Double.self, .hrWindowS)
         metric = c.lenient(String.self, .metric); valueGt = c.lenient(Double.self, .valueGt)
         maxDistanceM = c.lenient(Double.self, .maxDistanceM); minSpeedMps = c.lenient(Double.self, .minSpeedMps)
+        minDeltaBpm = c.lenient(Double.self, .minDeltaBpm); minDeltaPct = c.lenient(Double.self, .minDeltaPct)
+        sustainS = c.lenient(Double.self, .sustainS)
     }
 }
 
@@ -120,10 +128,10 @@ enum SenseSource: String, CaseIterable, Identifiable, Codable {
         case .macMetric: "desktopcomputer"; case .manual: "hand.tap"
         }
     }
-    /// Neon vision and radar feed the engine; the rest are stubs on the Mac side.
-    var isWired: Bool { self == .neon || self == .radar }
-    /// Sources offered by the built-in condition builder (radar has its own editor).
-    static var builtinCases: [SenseSource] { allCases.filter { $0 != .radar } }
+    /// Neon vision, radar and heart rate feed the engine; the rest are stubs on the Mac side.
+    var isWired: Bool { self == .neon || self == .radar || self == .heartRate }
+    /// Sources offered by the built-in condition builder (radar and heart rate have their own editors).
+    static var builtinCases: [SenseSource] { allCases.filter { $0 != .radar && $0 != .heartRate } }
 }
 
 struct SenseRule: Codable, Identifiable, Hashable {
@@ -209,9 +217,15 @@ struct SenseRule: Codable, Identifiable, Hashable {
     var hasV3Extras: Bool { gazeMode != nil || noticeMemoryS != nil || temporal != nil || trend != nil }
 
     var isRadar: Bool { source == SenseSource.radar.rawValue }
+    var isHeart: Bool { source == SenseSource.heartRate.rawValue }
+    /// Heart thresholds with the engine's defaults (15 bpm / 20 % / 8 s); legacy hr_band_bpm = min_delta_bpm.
+    var heartDeltaBpm: Double { cond.minDeltaBpm ?? cond.hrBandBpm ?? 15 }
+    var heartDeltaPct: Double { cond.minDeltaPct ?? 20 }
+    var heartSustainS: Double { cond.sustainS ?? 8 }
     /// Gaze mode with back-compat: missing => if.unseen ? unseen : any. Radar is always unseen.
     var effectiveGazeMode: GazeMode {
         if isRadar { return .unseen }
+        if isHeart { return .any }
         if let g = gazeMode.flatMap(GazeMode.init(rawValue:)) { return g }
         return cond.unseen == true ? .unseen : .any
     }
@@ -233,6 +247,7 @@ struct DeviceInfo: Codable, Identifiable, Hashable {
     // v3 card extras (neon: fps/gaze Hz/worn/battery/delay; radar: url/mode/last/rate). All lenient.
     var source: SourceStatus? = nil
     var radar: RadarStatus? = nil
+    var heart: HeartCard? = nil  // oura: backend / last bpm / 2-min median / since last (docs/protocol.md "Heart rate")
 
     enum CodingKeys: String, CodingKey {
         case id, name, kind, status, detail, transport, sink, link, stats
@@ -241,10 +256,10 @@ struct DeviceInfo: Codable, Identifiable, Hashable {
 
     init(id: String, name: String, kind: String, status: String, detail: String? = nil, transport: String? = nil,
          sink: String? = nil, lastSeen: Double? = nil, link: LinkInfo? = nil,
-         source: SourceStatus? = nil, radar: RadarStatus? = nil) {
+         source: SourceStatus? = nil, radar: RadarStatus? = nil, heart: HeartCard? = nil) {
         self.id = id; self.name = name; self.kind = kind; self.status = status; self.detail = detail
         self.transport = transport; self.sink = sink; self.lastSeen = lastSeen; self.link = link
-        self.source = source; self.radar = radar
+        self.source = source; self.radar = radar; self.heart = heart
     }
 
     init(from decoder: Decoder) throws {
@@ -259,6 +274,7 @@ struct DeviceInfo: Codable, Identifiable, Hashable {
         // The card's own keys may carry the v3 numbers (flat), so decode them from the same object.
         if id == "neon" { source = c.lenient(SourceStatus.self, .stats) ?? (try? SourceStatus(from: decoder)) }
         if id == "radar" { radar = try? RadarStatus(from: decoder) }
+        if id == "oura" { heart = (try? HeartCard(from: decoder)).flatMap { $0.hasData ? $0 : nil } }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -268,6 +284,38 @@ struct DeviceInfo: Codable, Identifiable, Hashable {
         try c.encodeIfPresent(transport, forKey: .transport); try c.encodeIfPresent(sink, forKey: .sink)
         try c.encodeIfPresent(lastSeen, forKey: .lastSeen); try c.encodeIfPresent(link, forKey: .link)
     }
+}
+
+/// The `oura` device card's heart-rate fields (flat on the card).
+struct HeartCard: Decodable, Hashable {
+    var backend: String?        // open_oura | replay | fake
+    var lastBpm: Double?
+    var medianBpm: Double?      // rolling 2-min median
+    var sinceLastS: Double?
+    var rateHz: Double?
+    var connected: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case backend, connected
+        case lastBpm = "last_bpm", medianBpm = "median_bpm", sinceLastS = "since_last_s", rateHz = "rate_hz"
+    }
+
+    init(backend: String? = nil, lastBpm: Double? = nil, medianBpm: Double? = nil, sinceLastS: Double? = nil,
+         rateHz: Double? = nil, connected: Bool? = nil) {
+        self.backend = backend; self.lastBpm = lastBpm; self.medianBpm = medianBpm; self.sinceLastS = sinceLastS
+        self.rateHz = rateHz; self.connected = connected
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        backend = c.lenient(String.self, .backend); lastBpm = c.lenient(Double.self, .lastBpm)
+        medianBpm = c.lenient(Double.self, .medianBpm); sinceLastS = c.lenient(Double.self, .sinceLastS)
+        rateHz = c.lenient(Double.self, .rateHz); connected = c.lenient(Bool.self, .connected)
+    }
+
+    /// An engine with the heart sense sends at least the backend; the old stub card sends none of these.
+    var hasData: Bool { backend != nil || lastBpm != nil || medianBpm != nil }
+    var isSimulated: Bool { backend == "replay" || backend == "fake" }
 }
 
 // MARK: - v3 status (server -> app `status`, on connect, every 2 s and on change)

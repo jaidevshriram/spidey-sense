@@ -15,6 +15,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 
+from . import heart as H
 from .types import Detection, Frame, HapticEvent
 
 # Sources a rule can listen to. "neon" (vision detections) and "radar" (RadarSense targets) are wired in.
@@ -44,6 +45,7 @@ class Rule:
     temporal: bool = False            # custom: judged over the last 3 frames, fires on a consistent trend
     trend: dict = field(default_factory=dict)   # temporal: {ticks: 3, sensitivity: low|medium|high}
     _last: float = field(default=-1e9, repr=False)
+    _heart: H.HeartState | None = field(default=None, repr=False)   # heart_rate: armed / sustain state
 
     def __post_init__(self):
         if not self.id:
@@ -79,7 +81,7 @@ class Rule:
         if not self.enabled:
             return False
         if self.source not in VISION_SOURCES:
-            # radar: see check_radar(). TODO(stub): heart_rate / mac_metric / manual have no input stream yet;
+            # radar: check_radar(); heart_rate: check_heart(). TODO(stub): mac_metric / manual have no input stream yet;
             # their conditions (hr_band_bpm, value_gt, ...) are stored and round-tripped only.
             return False
         c = self.if_
@@ -127,6 +129,28 @@ class Rule:
         return HapticEvent(self.feel, self.dot, text.replace("  ", " "), now, self.id,
                            trigger_name=self.name, why=why, intensity=self.intensity, rgb=self.rgb,
                            sensor="camera", extra=extra)
+
+    # ---- heart rate -----------------------------------------------------------------
+    def check_heart(self, sample: dict, now: float) -> HapticEvent | None:
+        """HeartRateSense sample {ts, bpm, bpm_smooth, median_bpm, baseline_ready} -> event. Fires when the
+        smoothed bpm is >= if.min_delta_bpm (15) or >= if.min_delta_pct % (20) over the rolling 2-min median for
+        >= if.sustain_s (8), once per excursion (re-arms below the threshold), not within cooldown_s.
+        The logic is spidey.heart.heart_step (pure, unit-tested); this keeps its state on the rule."""
+        if not self.enabled or self.source != "heart_rate":
+            return None
+        f = H.HeartTriggers.step_rule(self, sample, self._heart or H.HeartState())
+        if f is None:
+            return None
+        self._heart, fire = f
+        if fire is None:
+            return None
+        self._last = now
+        extra = {"heart": fire["heart"]}
+        lat = (now - fire["sample_ts"]) * 1000 if fire.get("sample_ts") else None
+        if lat is not None and 0 <= lat < 60_000:
+            extra["latency_ms"] = round(lat, 1)
+        return HapticEvent(self.feel, self.dot, fire["reason"], now, self.id, trigger_name=self.name,
+                           why=fire["why"], intensity=self.intensity, rgb=self.rgb, sensor="heart", extra=extra)
 
     # ---- radar ----------------------------------------------------------------------
     def check_radar(self, target: dict, now: float) -> HapticEvent | None:
@@ -229,6 +253,10 @@ def apply(rules: list[Rule], d: Detection, now: float) -> list[HapticEvent]:
 
 def apply_radar(rules: list[Rule], target: dict, now: float) -> list[HapticEvent]:
     return [e for r in rules if r.enabled and r.source == "radar" and (e := r.check_radar(target, now))]
+
+
+def apply_heart(rules: list[Rule], sample: dict, now: float) -> list[HapticEvent]:
+    return [e for r in rules if r.enabled and r.source == "heart_rate" and (e := r.check_heart(sample, now))]
 
 
 # =====================================================================================

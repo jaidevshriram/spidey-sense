@@ -19,13 +19,14 @@ struct HapticEvent: Identifiable {
     let triggerName: String?   // its display name
     let why: String?           // Haiku's one-line reason (newer engines)
     // v3 (all optional)
-    let sensor: String?        // camera | radar
+    let sensor: String?        // camera | radar | heart
     let thumb: UIImage?        // decoded `thumb` (base64 JPEG, gaze dot + bbox drawn)
     let radar: RadarReading?
     let gazeMode: String?
     let lookedAtSAgo: Double?
     let paused: Bool           // engine was paused: logged, nothing reached the Dot
     let trend: EventTrend?
+    let heart: HeartReading?   // heart events: {bpm, median_bpm, delta_bpm, above_s}
     let raw: [String: Any]
 
     init?(_ d: [String: Any]) {
@@ -47,7 +48,8 @@ struct HapticEvent: Identifiable {
         triggerName = (d["trigger_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         why = (d["why"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         radar = RadarReading(d["radar"] as? [String: Any])
-        sensor = (d["sensor"] as? String) ?? (radar != nil ? "radar" : nil)
+        heart = HeartReading(d["heart"] as? [String: Any])
+        sensor = (d["sensor"] as? String) ?? (radar != nil ? "radar" : heart != nil ? "heart" : nil)
         if let b64 = d["thumb"] as? String, !b64.isEmpty,
            let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) {
             thumb = UIImage(data: data)
@@ -76,6 +78,7 @@ struct HapticEvent: Identifiable {
     var triggerLabel: String { triggerName ?? rule }
 
     var isRadar: Bool { sensor == "radar" }
+    var isHeart: Bool { sensor == "heart" }
 
     /// Built by MockData for the offline demo, never from the engine.
     var isSample: Bool { raw["sample"] as? Bool ?? false }
@@ -169,5 +172,32 @@ struct EventTrend {
             parts.append(run > 1 ? "\(last) ×\(run)" : last)
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Event `heart` for heart_rate triggers: {bpm, median_bpm, delta_bpm, above_s}.
+struct HeartReading: Hashable {
+    var bpm: Double?
+    var medianBpm: Double?
+    var deltaBpm: Double?
+    var aboveS: Double?
+
+    init?(_ d: [String: Any]?) {
+        guard let d else { return nil }
+        func num(_ k: String) -> Double? { (d[k] as? NSNumber)?.doubleValue }
+        bpm = num("bpm"); medianBpm = num("median_bpm"); deltaBpm = num("delta_bpm"); aboveS = num("above_s")
+        if bpm == nil && medianBpm == nil { return nil }
+        if deltaBpm == nil, let b = bpm, let m = medianBpm { deltaBpm = b - m }
+    }
+
+    /// "HR 104 (median 71, +33) · 12 s"
+    var summary: String {
+        var s = "HR " + (bpm.map { String(Int($0.rounded())) } ?? "?")
+        var inner: [String] = []
+        if let m = medianBpm { inner.append("median \(Int(m.rounded()))") }
+        if let d = deltaBpm { inner.append(String(format: "%+d", Int(d.rounded()))) }
+        if !inner.isEmpty { s += " (" + inner.joined(separator: ", ") + ")" }
+        if let a = aboveS { s += " · \(Int(a.rounded())) s" }
+        return s
     }
 }

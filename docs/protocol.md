@@ -220,3 +220,44 @@ ticks, OR `touching`, with hysteresis + cooldown.
 - Trigger field: `"trend": {"ticks": 3, "sensitivity": "low"|"medium"|"high"}` (high = smaller changes count; default medium).
 - Event field: `"trend": {"gap": [0.8, 0.4, 0.1], "ordinal": ["closer", "closer", "closer"], "touching": false, "loom": 1.3}`.
   The app shows "gap 0.8 → 0.4 → 0.1 body-heights · closer ×3".
+
+## Heart rate (Oura) (added 2026-10-10)
+
+Source: `spidey/heart.py` `HeartRateSense` (backends `open_oura` = the ring over Bluetooth via the open_oura CLI,
+`replay` = a CSV, `fake` = synthetic). Engine hook: `Controller.start_heart` / `rules.apply_heart` (record: `docs/patches/heart_engine.md`). Ring setup: `docs/oura.md`.
+
+Trigger (`source: "heart_rate"`; the app sends `kind: "custom"`, no `describe`):
+```jsonc
+{
+  "id": "heart_racing", "name": "Heart racing", "kind": "custom", "source": "heart_rate",
+  "if": {
+    "min_delta_bpm": 15,   // fire when bpm >= 2-min median + this ...
+    "min_delta_pct": 20,   // ... OR >= median * (1 + this/100)  (whichever threshold is lower)
+    "sustain_s": 8         // continuously above the threshold for at least this long
+  },
+  "feel": "pulse", "cooldown_s": 60   // plus the usual intensity / rgb / dot
+}
+```
+- "bpm" is the median of the last 5 s of readings (per-beat bpm is jumpy); "median" is the rolling 2-min median.
+- No fires during the first 30 s (baseline warming up). Fires once per excursion: re-arms only after the bpm drops
+  back below the threshold, and never within `cooldown_s` of the last fire. A gap > 10 s in readings restarts `sustain_s`.
+- The old `hr_band_bpm` / `hr_window_s` keys (Rule section above) are read as `min_delta_bpm` if `min_delta_bpm` is missing;
+  the window is fixed at 120 s.
+
+Event additions: `sensor: "heart"`, and
+```json
+"heart": {"bpm": 104.0, "median_bpm": 71.0, "delta_bpm": 33.0, "above_s": 12.0}
+```
+`detection` is absent on heart events; `why` is a sentence ("HR 104 bpm, +33 over your 2-min median 71 for 12 s");
+`latency_ms` (reading → publish) only when the reading is real-time. The app's Log shows `HR 104 (median 71, +33) · 12 s`.
+
+Device card `oura` (in `device.status`; replaces the `coming_soon` stub):
+```json
+{"id": "oura", "name": "Oura", "kind": "heart_rate", "status": "connected",
+ "backend": "open_oura", "last_bpm": 72.0, "median_bpm": 70.5, "since_last_s": 0.8, "rate_hz": 1.1,
+ "connected": true, "detail": "open_oura · 72 bpm · 2-min median 70 · open_oura: live", "last_seen": 1791683202.5}
+```
+`status`: `connected` (open_oura, a reading in the last 10 s) | `simulated` (replay / fake running) | `disconnected`
+(the ring is out of range / not worn / the CLI is restarting) | `off` (not enabled: `detail` = "off (heart.enabled: false)",
+like the radar card).
+Older engines still send `status: "coming_soon"`; the app keeps showing "Coming soon" for that.

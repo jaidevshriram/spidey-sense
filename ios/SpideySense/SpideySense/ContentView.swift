@@ -272,7 +272,7 @@ struct EventRow: View {
                 }
                 HStack(spacing: 4) {
                     Image(systemName: sensorIcon).font(.caption).foregroundStyle(.secondary)
-                        .accessibilityLabel(event.isRadar ? "radar" : "camera")
+                        .accessibilityLabel(event.isRadar ? "radar" : event.isHeart ? "heart rate" : "camera")
                     Text(event.triggerLabel.isEmpty ? subject : event.triggerLabel)
                         .font(.subheadline.bold()).lineLimit(1)
                 }
@@ -283,6 +283,10 @@ struct EventRow: View {
                     Label(r.summary, systemImage: "dot.radiowaves.right")
                         .font(.caption.monospacedDigit()).foregroundStyle(.teal)
                 }
+                if let h = event.heart {
+                    Label(h.summary, systemImage: "heart.fill")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.pink)
+                }
                 if let t = event.trend {
                     HStack(spacing: 6) {
                         if !t.summary.isEmpty {
@@ -291,7 +295,7 @@ struct EventRow: View {
                         if t.touching { Tag(text: "touching", color: .red) }
                     }
                 }
-                if !subject.isEmpty && !event.triggerLabel.isEmpty && !event.isRadar {
+                if !subject.isEmpty && !event.triggerLabel.isEmpty && !event.isRadar && !event.isHeart {
                     Text(subject).font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -301,7 +305,8 @@ struct EventRow: View {
     }
 
     private var sensorIcon: String {
-        event.isRadar ? "dot.radiowaves.right" : (event.sensor == "camera" || event.thumb != nil ? "camera.fill" : "bolt.fill")
+        event.isRadar ? "dot.radiowaves.right" : event.isHeart ? "heart.fill"
+            : (event.sensor == "camera" || event.thumb != nil ? "camera.fill" : "bolt.fill")
     }
 
     private var subject: String {
@@ -330,16 +335,18 @@ struct EventThumb: View {
             if let img = event.thumb {
                 Image(uiImage: img).resizable().scaledToFill()
             } else {
-                Image(systemName: event.isRadar ? "dot.radiowaves.right" : "waveform")
-                    .font(.title2).foregroundStyle(event.isRadar ? Color.teal : patternColor(event.pattern))
+                Image(systemName: event.isRadar ? "dot.radiowaves.right" : event.isHeart ? "heart.fill" : "waveform")
+                    .font(.title2).foregroundStyle(tint)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background((event.isRadar ? Color.teal : patternColor(event.pattern)).opacity(0.12))
+                    .background(tint.opacity(0.12))
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .accessibilityLabel(event.thumb != nil ? "Frame thumbnail" : (event.isRadar ? "Radar event" : "Event"))
+        .accessibilityLabel(event.thumb != nil ? "Frame thumbnail"
+                            : (event.isRadar ? "Radar event" : event.isHeart ? "Heart-rate event" : "Event"))
     }
+    private var tint: Color { event.isRadar ? .teal : event.isHeart ? .pink : patternColor(event.pattern) }
 }
 
 struct EventDetail: View {
@@ -357,6 +364,9 @@ struct EventDetail: View {
                     }
                     if let r = event.radar, !r.summary.isEmpty {
                         Label(r.summary, systemImage: "dot.radiowaves.right").font(.headline).foregroundStyle(.teal)
+                    }
+                    if let h = event.heart {
+                        Label(h.summary, systemImage: "heart.fill").font(.headline).foregroundStyle(.pink)
                     }
                     if let t = event.trend, !t.summary.isEmpty {
                         Label(t.summary, systemImage: "timer").font(.subheadline).foregroundStyle(.purple)

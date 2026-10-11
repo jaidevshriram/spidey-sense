@@ -81,6 +81,7 @@ struct DeviceCard: View {
                 // Newer engines already fold fps/gaze/battery into `detail`; only add the line when they don't.
                 if let src = device.source, !(device.detail ?? "").contains("fps") { NeonDetail(source: src) }
                 if let r = device.radar { RadarDetail(radar: r, now: now) }
+                if let h = device.heart { HeartDetail(heart: h, now: now, lastSeen: device.lastSeen) }
                 if let l = device.link, l.transport != nil {
                     let bits = [l.ms.map { "read \(fmtMs($0)) ms" }, l.rssi.map { "rssi \(Int($0)) dBm" },
                                 l.dots.map { "dots \($0.map(String.init).joined(separator: ","))" }].compactMap { $0 }
@@ -115,14 +116,20 @@ struct DeviceCard: View {
                 : "DataFeel haptics (simulated on the Mac)"
         case "neon": device.source?.isFake == true ? "Fake camera source on the Mac" : "Eye tracker via the Companion phone"
         case "radar": device.radar?.mode == "sim" ? "Radar (simulated) via radar-lab" : "Radar board via radar-lab"
-        case "oura": "Heart rate ring"
+        case "oura":
+            switch device.heart?.backend {
+            case "open_oura": "Oura ring, live heart rate via open_oura (Bluetooth, Mac)"
+            case "replay": "Heart rate replayed from a CSV on the Mac"
+            case "fake": "Fake heart rate on the Mac"
+            default: device.status == "coming_soon" ? "Heart rate ring" : "Heart rate ring (open_oura)"
+            }
         default: device.kind
         }
     }
     private var icon: String {
         switch device.id {
         case "mac_hub": "desktopcomputer"; case "el_jefe": "hand.raised.fingers.spread"
-        case "neon": "eyeglasses"; case "oura": "circle.circle"; case "radar": "dot.radiowaves.right"
+        case "neon": "eyeglasses"; case "oura": "heart.circle"; case "radar": "dot.radiowaves.right"
         default: "sensor"
         }
     }
@@ -189,5 +196,39 @@ struct RadarDetail: View {
     private var sinceLast: Double? {
         if let ts = radar.last?.ts ?? radar.lastTs { return max(0, now.timeIntervalSince1970 - ts) }
         return radar.sinceLastS
+    }
+}
+
+/// Oura card extras: backend, last HR, 2-min median, connected / time since the last beat.
+struct HeartDetail: View {
+    let heart: HeartCard
+    let now: Date
+    let lastSeen: Double?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                Label(heart.lastBpm.map { "\(Int($0.rounded())) bpm" } ?? "— bpm", systemImage: "heart.fill")
+                    .font(.title3.monospacedDigit().bold()).foregroundStyle(.pink)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("2-min median").font(.caption2).foregroundStyle(.secondary)
+                    Text(heart.medianBpm.map { "\(Int($0.rounded())) bpm" } ?? "warming up")
+                        .font(.subheadline.monospacedDigit())
+                }
+            }
+            Text([heart.backend, connectedText, heart.rateHz.map { String(format: "%.1f Hz", $0) }]
+                    .compactMap { $0 }.joined(separator: " · "))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(heart.connected == false && !heart.isSimulated ? Color.red : Color.secondary)
+            if let since = sinceLast {
+                Text(String(format: "%.1f s since the last beat", since)).font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+    }
+    private var connectedText: String? {
+        heart.connected.map { $0 ? (heart.isSimulated ? "running" : "connected") : "not connected" }
+    }
+    private var sinceLast: Double? {
+        if let ts = lastSeen { return max(0, now.timeIntervalSince1970 - ts) }
+        return heart.sinceLastS
     }
 }

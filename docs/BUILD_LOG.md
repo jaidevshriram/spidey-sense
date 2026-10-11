@@ -411,3 +411,21 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
   it needs the same Wi-Fi as the Mac (the Neon phone's hotspot).
 - App icon: a spider web (8 spokes, 4 sagging rings, red centre dot) on a dark red-black gradient; source `ios/SpideySense/design/app_icon.svg`,
   rendered to an opaque 1024 PNG in `Assets.xcassets/AppIcon.appiconset`.
+
+### 19:15 Heart-rate (Oura) sense: replay / fake / open_oura, "Heart racing" trigger, app UI (no ring touched)
+- `backend/spidey/heart.py`: `HeartRateSense(backend="replay"|"fake"|"open_oura", on_sample=...)` in the radar style (background
+  thread, never raises/blocks, `status()` / `close()`); rolling 2-min median + 5-s smoothing; pure `heart_step` trigger logic
+  (+15 bpm OR +20 % over the median for >= 8 s, cooldown 60 s, re-arms below the threshold, 30 s warm-up). `python -m spidey.heart`.
+- open_oura (github.com/Th0rgal/open_oura, Rust CLI): read its source; runs `oura --key-file K --db logs/oura_live.db live-hr --seconds 600`
+  as a subprocess, parses its `  72 bpm (IBI 833 ms)` lines (verified from `cmd_live_hr`), restarts per chunk / with backoff. Key from `.env`
+  (`OURA_KEY_FILE`, or `OURA_AUTH_KEY` → private 0600 temp file); never printed. Only tested against `tests/fake_oura.py` (no Bluetooth).
+- Engine: `Controller.start_heart` / `on_heart_sample` → `rules.apply_heart` → `Rule.check_heart` → `Controller.emit` (`sensor: "heart"`,
+  `heart: {bpm, median_bpm, delta_bpm, above_s}`); Oura device card from `heart.oura_card` (`off` when `heart.enabled` is false). Record:
+  `docs/patches/heart_engine.patch` / `.md` (the engine.py part went into d4a44f6 with the radar-off commit).
+- Tests: `tests.test_heart` 29/29 (spike CSV → exactly one fire at 162 s of data, flat CSV → none, accelerated replay x200–x2000,
+  cooldown/re-arm, open_oura restart/backoff/key handling via a fake CLI, Controller hook). `tests.test_radar_client` 10/10, `desk_test.sh check` ALL PASS.
+- iOS: Senses editor sensor picker Camera | Radar | **Heart rate** (median +bpm 5–40, or % 5–50, for 3–30 s, cooldown 10–600 s); template
+  "Heart racing"; Oura card (backend, last HR, 2-min median, connected, since last beat) instead of "Coming soon" when the engine sends data;
+  Log rows `HR 104 (median 71, +33) · 12 s`. Sample data for all. Screenshots `ios/screenshots/oura-{editor,devices,log,senses}.png`.
+- Docs: `docs/oura.md` (what open_oura is, why not the cloud API, at-home reset → pair → .env → live bpm → engine steps, risks),
+  protocol "Heart rate (Oura)".

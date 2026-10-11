@@ -145,4 +145,4 @@ in the same commit, and gets a timestamped entry in `docs/BUILD_LOG.md` (see `CL
   alerts, feed protocol v2 and the Spidey adapter (`radar/adapter/`).
 - Desk test images from Wikimedia Commons; the lion is CC BY 2.0 by Kevin Pluck. Full list: `backend/desk_test/CREDITS.md`.
 - `bleak`, `minimalmodbus`, `pyserial`, `websockets`, FastAPI, OpenCV.
-- Later: `open_oura` for Oura ring heart rate.
+- `open_oura` (MIT, github.com/Th0rgal/open_oura) for live Oura ring heart rate (`backend/spidey/heart.py`, setup in `docs/oura.md`).
