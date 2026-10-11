@@ -72,17 +72,31 @@
 <footer>Lion: Kevin Pluck, CC BY 2.0 · tiger, dog, house: public domain · car: CC0 — via Wikimedia Commons (see CREDITS.md)</footer>
 
 <script>
-const PICS = ["lion", "tiger", "dog", "car", "house"], HOLD_MS = 6000;
+const PICS = ["lion", "tiger", "dog", "car", "house"], HOLD_MS = 10000, BLANK_MS = 2500;
+// Ground truth for traces: every picture change is logged with a timestamp (console + POST to the trace viewer if running).
+const TRUTH_URL = "http://localhost:8096/api/truth";
+function truth(what) {
+  const rec = {t: Date.now() / 1000, test: mode === "pics" ? "A/B" : "C/D", shown: what};
+  console.log("[truth]", JSON.stringify(rec));
+  try { fetch(TRUTH_URL, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(rec), mode: "no-cors"}).catch(() => {}); } catch (e) {}
+}
 let idx = 0, paused = false, timer = null, mode = "pics", lakeT0 = performance.now(), useLake = true;
 const $ = (id) => document.getElementById(id);
 
 function showPic() {
+  $("pic").style.visibility = "visible";
   $("pic").src = `img/${PICS[idx]}.jpg`;
+  truth(PICS[idx]);
   $("status").textContent = `picture ${idx + 1}/${PICS.length}${paused ? " (paused)" : ""}`;
 }
 function schedule() {
   clearTimeout(timer);
-  if (!paused && mode === "pics") timer = setTimeout(() => { idx = (idx + 1) % PICS.length; showPic(); schedule(); }, HOLD_MS);
+  // hold 10 s, then a 2.5 s blank before the next picture: with ~2 s detection latency a late buzz
+  // lands on the blank, not on the next picture
+  if (!paused && mode === "pics") timer = setTimeout(() => {
+    $("pic").style.visibility = "hidden"; truth("blank");
+    timer = setTimeout(() => { idx = (idx + 1) % PICS.length; showPic(); schedule(); }, BLANK_MS);
+  }, HOLD_MS);
 }
 function setMode(m) {
   mode = m;
