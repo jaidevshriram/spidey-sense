@@ -2,6 +2,8 @@
 
 **Spidey Sense:** smart glasses that tap your wrist about things you haven't looked at. Site: https://jaidevshriram.com/spidey-sense/
 
+2026-10-16: site and README images now show only what the glasses saw (hero = box-ahead capture; cable and punch scenes cropped to the glasses view). No photos of Jaidev.
+
 Final state:
 - Works live: Neon glasses → Mac over the Companion phone's 5 GHz hotspot (~90 ms); one Claude Haiku call per frame for every
   plain-English trigger; gaze-aware firing (a ~0.2 s look counts as noticed); DataFeel Dot over Bluetooth (117 ms); iOS app

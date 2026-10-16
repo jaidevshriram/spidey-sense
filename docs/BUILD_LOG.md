@@ -603,3 +603,7 @@ cd ios/SpideySense && xcodegen generate && open SpideySense.xcodeproj
 
 ## 2026-10-11 23:15 · Wrapped
 - Project wrapped. Engine stopped (Haiku, Dot link, glasses stream off). GitHub description + homepage set; STATUS.md has the final state and next steps (rotate keys).
+
+## 2026-10-16 · Site images: glasses' view only
+- At the user's request the site no longer shows him. Hero is now the glasses-view capture (site/assets/demo-screen.jpg: gaze on phone, box ahead, buzz 1.7 s).
+- Cable and punch scenes cropped to the glasses' half of the old side-by-sides (PIL `crop((828,72,1392,492))`) → site/assets/scene-wire-pov.jpg, scene-punch-pov.jpg (564×420). Old spidey-sense-moment.jpg, scene-wire.jpg, scene-punch.jpg deleted. README scenario table points at the POV crops.

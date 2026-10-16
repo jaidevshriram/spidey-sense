@@ -20,9 +20,9 @@ Five moments from the demo. The first three are real takes from the hackathon fl
 
 | | |
 |:-:|---|
-| <img src="site/assets/scene-wire.jpg" width="460"> | **What you missed: eyes on the phone, cable on the floor.** My gaze never left the phone, so when Haiku boxed the power cord across the walkway, the Dot buzzed amber before I reached it. *"Black cable and power cord lying on floor ahead."* |
+| <img src="site/assets/scene-wire-pov.jpg" width="460"> | **What you missed: eyes on the phone, cable on the floor.** My gaze never left the phone, so when Haiku boxed the power cord across the walkway, the Dot buzzed amber before I reached it. *"Black cable and power cord lying on floor ahead."* |
 | <img src="docs/screenshots/demo-screen.jpg" width="460"> | **Only if you haven't noticed.** Rest your eyes on the box for a moment and Spidey stays quiet; a quick glance doesn't count. Keep reading and it taps you. 1.7 s from the frame to the buzz. |
-| <img src="site/assets/scene-punch.jpg" width="460"> | **When it's urgent: a fist from the side.** A friend swung a slow punch while I was on my phone; danger gets a stronger, red buzz. *"Blurred raised fist and arm moving toward the camera wearer."* 1.8 s from the frame to the buzz. |
+| <img src="site/assets/scene-punch-pov.jpg" width="460"> | **When it's urgent: a fist from the side.** A friend swung a slow punch while I was on my phone; danger gets a stronger, red buzz. *"Blurred raised fist and arm moving toward the camera wearer."* 1.8 s from the frame to the buzz. |
 | <img src="docs/screenshots/redesign/home-heart.png" width="200"> | **Your heartbeat, too.** Heart rate from an Oura ring; a "Heart racing" trigger buzzes when it jumps well above your usual. (App screen; the reading shown is sample data.) |
 | <img src="docs/screenshots/redesign/voice-draft-sheet.png" width="200"> | **Make it yours.** Hold the button and say *"warn me if someone waves at me"*. ElevenLabs transcribes it, Claude writes the trigger, and you confirm when it fires, whether only if you haven't looked, and how it feels. |
 
